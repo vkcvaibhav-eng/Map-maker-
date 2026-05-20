@@ -173,7 +173,15 @@ with tab2:
                 
                 st.subheader("2. Map Styling")
                 plate_title = st.text_area("Plate Title / Caption", value="Plate 3.1: Map showing the districts of middle Gujarat surveyed for the collection of pink bollworm, P. gossypiella", height=100)
-                color_map_choice = st.selectbox("Highlight Palette", ["None (White)", "Pastel1", "Set3", "Accent", "tab20c"])
+                # Extended list of modern, publication-grade palettes
+                modern_palettes = [
+                    "None (White)", 
+                    "Set2", "Dark2", "Paired", "tab10",  # Modern Qualitative (Distinct colors)
+                    "Greens", "Blues", "YlGnBu", "OrRd", # Sleek Sequential (Professional government style)
+                    "viridis", "cividis", "plasma",      # Scientific colorblind-safe standards
+                    "Pastel1", "Set3", "Accent"          # Legacy options
+                ]
+                color_map_choice = st.selectbox("Highlight Palette", modern_palettes)
 
                 st.subheader("3. Element Placement")
                 st.markdown("Adjust these to prevent the inset or compass from overlapping your selected districts.")
