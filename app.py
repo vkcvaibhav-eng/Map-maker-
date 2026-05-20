@@ -162,11 +162,17 @@ with tab2:
             with col3:
                 st.subheader("1. Select Surveyed Regions")
                 all_districts = sorted(gdf[district_col].dropna().unique().tolist())
-                # Default to the middle Gujarat cluster
+                
+                # Create a list of the districts we want to highlight by default
+                ideal_defaults = ["Ahmedabad", "Anand", "Vadodara", "Kheda", "Panchmahal", "Dahod", "Mahisagar", "Chhotaudepur", "Botad"]
+                
+                # Only use defaults that actually match the spelling in your GeoJSON file
+                safe_defaults = [d for d in ideal_defaults if d in all_districts]
+                
                 selected_districts = st.multiselect(
                     "Select districts to highlight:",
                     options=all_districts,
-                    default=["Ahmedabad", "Anand", "Vadodara", "Kheda", "Panchmahal", "Dahod", "Mahisagar", "Chhotaudepur", "Botad"] 
+                    default=safe_defaults 
                 )
                 
                 st.subheader("2. Map Styling")
