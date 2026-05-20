@@ -36,7 +36,6 @@ with tab1:
         uploaded_file = st.file_uploader("Upload GPS CSV", type=["csv"], key="interactive_csv")
     
     with col2:
-        # Initialize Map
         m = folium.Map(location=[22.2587, 71.1924], zoom_start=7)
 
         folium.TileLayer(tiles="cartodbpositron", name="Clean Street Map").add_to(m)
@@ -48,7 +47,6 @@ with tab1:
         ).add_to(m)
         folium.TileLayer(tiles="OpenStreetMap", name="Standard Street Map").add_to(m)
 
-        # Add Boundaries
         file_mapping = {
             "Gujarat State": "data/gujarat_state.geojson",
             "Districts": "data/gujarat.geojson",
@@ -66,7 +64,6 @@ with tab1:
             else:
                 st.warning(f"Boundary file not found: {file_path}. Please check your data folder.")
 
-        # Process and Plot GPS Coordinates
         if uploaded_file:
             df = pd.read_csv(uploaded_file)
             
@@ -136,21 +133,19 @@ with tab1:
 
 
 # ==========================================
-# TAB 2: STATIC THESIS REGION MAP
+# TAB 2: STATIC THESIS REGION MAP (INSET STYLE)
 # ==========================================
 with tab2:
-    st.header("Static Region Highlight Map")
-    st.markdown("Generate a shaded, publication-ready map (e.g., for highlighting districts surveyed for *P. gossypiella* or specific mite species).")
+    st.header("Static Region Highlight Map (Inset Style)")
+    st.markdown("Generate a zoomed-in main map with a state-wide inset, exactly like the *P. gossypiella* reference plate.")
     
     district_geojson_path = "data/gujarat.geojson"
     
     if not os.path.exists(district_geojson_path):
         st.error(f"Cannot find {district_geojson_path}. Please ensure your GeoJSON is in the data folder.")
     else:
-        # Load GeoDataFrame
         gdf = gpd.read_file(district_geojson_path)
         
-        # Ensure we have a column that uniquely identifies districts (adjust 'dtname' if your geojson uses a different key like 'NAME_2' or 'district')
         district_col = None
         for col in ['dtname', 'NAME_2', 'district', 'Dist_Name']:
             if col in gdf.columns:
@@ -165,29 +160,27 @@ with tab2:
             with col3:
                 st.subheader("1. Select Surveyed Regions")
                 all_districts = sorted(gdf[district_col].dropna().unique().tolist())
+                # Default to the middle Gujarat cluster
                 selected_districts = st.multiselect(
                     "Select districts to highlight:",
                     options=all_districts,
-                    default=["Ahmedabad", "Anand", "Vadodara", "Kheda", "Panchmahal", "Dahod", "Mahisagar", "Chhotaudepur", "Botad"] # Defaults based on your plate
+                    default=["Ahmedabad", "Anand", "Vadodara", "Kheda", "Panchmahal", "Dahod", "Mahisagar", "Chhotaudepur", "Botad"] 
                 )
                 
                 st.subheader("2. Map Styling")
-                plate_title = st.text_input("Plate Title / Caption", value="Plate 3.1: Map showing the districts of middle Gujarat surveyed")
+                plate_title = st.text_area("Plate Title / Caption", value="Plate 3.1: Map showing the districts of middle Gujarat surveyed for the collection of pink bollworm, P. gossypiella", height=100)
                 color_map_choice = st.selectbox("Highlight Palette", ["Pastel1", "Set3", "Accent", "tab20c"])
                 
             with col4:
-                # --- Generate Matplotlib Plot ---
-                fig, ax = plt.subplots(1, 1, figsize=(10, 8), dpi=300)
+                # Create the main figure
+                fig, ax_main = plt.subplots(figsize=(10, 7), dpi=300)
                 
-                # Plot base map (all districts in white with black borders)
-                gdf.plot(ax=ax, color='white', edgecolor='black', linewidth=0.8)
-                
-                # Plot highlighted districts
                 if selected_districts:
+                    # 1. MAIN MAP: Plot ONLY the selected districts
                     highlighted_gdf = gdf[gdf[district_col].isin(selected_districts)]
-                    # Assigning colors based on selected colormap
+                    
                     highlighted_gdf.plot(
-                        ax=ax, 
+                        ax=ax_main, 
                         column=district_col, 
                         cmap=color_map_choice, 
                         edgecolor='black', 
@@ -195,29 +188,60 @@ with tab2:
                         legend=False
                     )
                     
-                    # Add text labels for highlighted districts
+                    # Add district names to main map
                     for idx, row in highlighted_gdf.iterrows():
-                        # Get centroid for label placement
                         centroid = row.geometry.centroid
-                        ax.annotate(
+                        ax_main.annotate(
                             text=row[district_col],
                             xy=(centroid.x, centroid.y),
                             horizontalalignment='center',
                             verticalalignment='center',
-                            fontsize=8,
+                            fontsize=9,
                             fontweight='bold',
                             color='black'
                         )
+                        
+                    # 2. INSET MAP: Add the small map in the top left
+                    # Coordinates: [left, bottom, width, height] as fractions of figure
+                    ax_inset = fig.add_axes([0.05, 0.65, 0.25, 0.25]) 
+                    
+                    # Plot whole state in white
+                    gdf.plot(ax=ax_inset, color='white', edgecolor='gray', linewidth=0.5)
+                    # Highlight selected region in pink
+                    highlighted_gdf.plot(ax=ax_inset, color='#ff99cc', edgecolor='black', linewidth=0.5)
+                    
+                    # Remove axis from inset map
+                    ax_inset.set_xticks([])
+                    ax_inset.set_yticks([])
+                    ax_inset.set_frame_on(False)
+                    
+                else:
+                    # Fallback if nothing is selected
+                    gdf.plot(ax=ax_main, color='white', edgecolor='black')
+
+                # Remove axis from main map for a clean look
+                ax_main.set_xticks([])
+                ax_main.set_yticks([])
+                ax_main.set_frame_on(False)
                 
-                # Remove axis coordinates for a clean thesis look
-                ax.set_xticks([])
-                ax.set_yticks([])
-                ax.set_frame_on(False)
-                
-                # Add Title at the bottom
+                # 3. TITLE BLOCK: Blue rectangle at the bottom
                 if plate_title:
-                    plt.figtext(0.5, 0.05, plate_title, wrap=True, horizontalalignment='center', 
-                                fontsize=12, fontweight='bold', bbox={"facecolor":"#4F81BD", "alpha":1, "pad":5}, color="white")
+                    plt.figtext(
+                        0.5, 0.05,  # Positioned at the bottom center
+                        plate_title, 
+                        wrap=True, 
+                        horizontalalignment='center', 
+                        verticalalignment='center',
+                        fontsize=12, 
+                        fontweight='bold', 
+                        color="white",
+                        bbox=dict(
+                            facecolor="#4A7EBB", # The matching blue shade
+                            edgecolor="black", 
+                            boxstyle="square,pad=1", # Pad adds space around text
+                            linewidth=0.5
+                        )
+                    )
                 
                 st.pyplot(fig)
                 
@@ -229,6 +253,6 @@ with tab2:
                 st.download_button(
                     label="Download High-Resolution Map (PNG)",
                     data=buf,
-                    file_name="thesis_survey_map.png",
+                    file_name="thesis_survey_map_inset.png",
                     mime="image/png"
                 )
