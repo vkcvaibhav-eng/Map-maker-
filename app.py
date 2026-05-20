@@ -46,10 +46,10 @@ folium.TileLayer(
 ).add_to(m)
 
 # --- Add Boundaries ---
-# Ensure you have a 'data' folder in your GitHub repository with these files
+# Pointing to the exact file names you uploaded and organized
 file_mapping = {
     "Gujarat State": "data/gujarat_state.geojson",
-    "Districts": "data/gujarat_districts.geojson",
+    "Districts": "data/gujarat.geojson",
     "Talukas": "data/gujarat_talukas.geojson"
 }
 
@@ -62,7 +62,7 @@ if highlight_type != "None":
             style_function=lambda x: {'color': 'blue', 'weight': 1.5, 'fillOpacity': 0.1}
         ).add_to(m)
     else:
-        st.sidebar.warning(f"Boundary file not found: {file_path}. Please upload it to your repository.")
+        st.sidebar.warning(f"Boundary file not found: {file_path}. Please check your data folder on GitHub.")
 
 # --- Process and Plot GPS Coordinates ---
 if uploaded_file:
@@ -108,7 +108,7 @@ if uploaded_file:
         for _, row in filtered_df.iterrows():
             loc_name = row.get('Location', "Unknown Location")
             
-            # Build HTML tooltip
+            # Build HTML tooltip for hover effect
             tooltip_text = f"<b>Location:</b> {loc_name}"
             
             if color_col != "None (All Red)" and pd.notna(row[color_col]):
