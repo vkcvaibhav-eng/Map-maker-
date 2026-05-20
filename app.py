@@ -1,253 +1,154 @@
 import streamlit as st
+import folium
+from streamlit_folium import st_folium
 import pandas as pd
-import numpy as np
-import statsmodels.api as sm
-from statsmodels.formula.api import ols
-from scipy import stats
-from fpdf import FPDF
-import io
+import os
 
-# --- 1. SETUP PDF REPORTING ---
-class PDFReport(FPDF):
-    def header(self):
-        self.set_font('Courier', 'B', 12)
-        self.cell(0, 10, 'RBD Analysis Report', 0, 1, 'C')
-        self.ln(5)
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Courier', 'I', 8)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+# --- Page Configuration ---
+st.set_page_config(page_title="Ph.D. Survey Map Generator", layout="wide")
 
-# --- 2. HELPER FUNCTIONS ---
-def run_anova(df, val_col):
-    """Calculates ANOVA stats for a specific dataframe"""
-    model = ols(f'{val_col} ~ C(Treatment) + C(Replication)', data=df).fit()
-    anova = sm.stats.anova_lm(model, typ=1)
-    
-    mse = anova.loc['Residual', 'mean_sq']
-    df_err = anova.loc['Residual', 'df']
-    grand_mean = df[val_col].mean()
-    sem = np.sqrt(mse / df['Replication'].nunique())
-    cv = (np.sqrt(mse) / grand_mean) * 100
-    t_val = stats.t.ppf(1 - 0.05/2, df_err)
-    cd = sem * np.sqrt(2) * t_val
-    
-    return {"anova": anova, "mean": grand_mean, "sem": sem, "cv": cv, "cd": cd}
+st.title("Gujarat Survey Map Generator")
+st.markdown("Generate professional, publication-ready maps for your Ph.D. thesis.")
 
-def format_anova_txt(anova_df, sem, cd):
-    """Converts ANOVA table to text with SEm and CD columns like PDF"""
-    # Define Header
-    txt = f"{'Source':<20} | {'DF':<4} | {'SS':<10} | {'MS':<10} | {'F-Cal':<6} | {'SEm':<8} | {'CD':<8}\n" 
-    txt += "-"*85 + "\n"
-    
-    for idx, row in anova_df.iterrows():
-        source = idx.replace("C(", "").replace(")", "").replace("Residual", "Error")
-        f_val = f"{row['F']:.2f}" if not pd.isna(row['F']) else "-"
-        
-        # Only add SEm and CD to the Treatment row
-        if source == "Treatment":
-            s_val = f"{sem:.3f}"
-            c_val = f"{cd:.3f}"
-        else:
-            s_val = "-"
-            c_val = "-"
+# --- Sidebar Controls ---
+st.sidebar.header("1. Map Settings")
+highlight_type = st.sidebar.selectbox(
+    "Select Boundary Level", 
+    ["None", "Gujarat State", "Districts", "Talukas"]
+)
 
-        txt += f"{source:<20} | {int(row['df']):<4} | {row['sum_sq']:<10.2f} | {row['mean_sq']:<10.2f} | {f_val:<6} | {s_val:<8} | {c_val:<8}\n"
-    return txt
+st.sidebar.header("2. Upload Survey Data")
+st.sidebar.markdown("Upload a CSV file containing `Latitude` and `Longitude` columns.")
+uploaded_file = st.sidebar.file_uploader("Upload GPS CSV", type=["csv"])
 
-# --- 3. STREAMLIT APP INTERFACE ---
-st.set_page_config(page_title="AgriStat Package", layout="wide")
-st.title("🌾 Agricultural Statistical Package")
-st.markdown("Perform **RBD Analysis** with outputs matching standard PDF reports (SEm, CD in table).")
+# --- Initialize Map ---
+# Centered on Gujarat
+m = folium.Map(location=[22.2587, 71.1924], zoom_start=7)
 
-# SIDEBAR: Upload and Settings
-st.sidebar.header("Data Setup")
-uploaded_file = st.sidebar.file_uploader("Upload Combined Data (Excel/CSV)", type=['xlsx', 'csv'])
-trans_type = st.sidebar.selectbox("Transformation", ["Original Data", "Square Root", "Arcsine"])
+# 1. Add the clean, publication-friendly street map (Default)
+folium.TileLayer(
+    tiles="cartodbpositron", 
+    name="Clean Street Map"
+).add_to(m)
 
+# 2. Add Esri high-resolution Satellite Imagery
+folium.TileLayer(
+    tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attr='Esri',
+    name='Satellite View',
+    overlay=False
+).add_to(m)
+
+# 3. Add OpenStreetMap as an alternative detailed street map
+folium.TileLayer(
+    tiles="OpenStreetMap",
+    name="Standard Street Map"
+).add_to(m)
+
+# --- Add Boundaries ---
+# Ensure you have a 'data' folder in your GitHub repository with these files
+file_mapping = {
+    "Gujarat State": "data/gujarat_state.geojson",
+    "Districts": "data/gujarat_districts.geojson",
+    "Talukas": "data/gujarat_talukas.geojson"
+}
+
+if highlight_type != "None":
+    file_path = file_mapping[highlight_type]
+    if os.path.exists(file_path):
+        folium.GeoJson(
+            file_path, 
+            name=highlight_type,
+            style_function=lambda x: {'color': 'blue', 'weight': 1.5, 'fillOpacity': 0.1}
+        ).add_to(m)
+    else:
+        st.sidebar.warning(f"Boundary file not found: {file_path}. Please upload it to your repository.")
+
+# --- Process and Plot GPS Coordinates ---
 if uploaded_file:
-    # READ DATA
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
+    df = pd.read_csv(uploaded_file)
+    
+    if 'Latitude' in df.columns and 'Longitude' in df.columns:
         
-        # CLEAN DATA
-        df.columns = df.columns.str.strip()
-        if 'Year' not in df.columns: df.rename(columns={df.columns[0]: 'Year'}, inplace=True)
-        if 'Treatment' not in df.columns: df.rename(columns={df.columns[1]: 'Treatment'}, inplace=True)
+        # UI for Map Styling & Filtering
+        st.sidebar.markdown("---")
+        st.sidebar.header("3. Map Styling & Filtering")
         
-        # RESHAPE
-        id_vars = ['Year', 'Treatment']
-        val_vars = [c for c in df.columns if c not in id_vars]
-        df_long = df.melt(id_vars=id_vars, value_vars=val_vars, var_name='Replication', value_name='Yield')
-        df_long['Yield'] = pd.to_numeric(df_long['Yield'], errors='coerce')
-
-        # TRANSFORM
-        if trans_type == "Square Root":
-            df_long['Analyzed_Value'] = np.sqrt(df_long['Yield'] + 0.5)
-        elif trans_type == "Arcsine":
-            safe = df_long['Yield'].clip(0, 100)
-            df_long['Analyzed_Value'] = np.degrees(np.arcsin(np.sqrt(safe / 100)))
-        else:
-            df_long['Analyzed_Value'] = df_long['Yield']
+        # Find categorical columns (exclude coordinates)
+        categorical_columns = [col for col in df.columns if col not in ['Latitude', 'Longitude']]
+        color_options = ["None (All Red)"] + categorical_columns
+        
+        color_col = st.sidebar.selectbox("Color and filter markers by:", color_options)
+        
+        filtered_df = df.copy() 
+        palette = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'cadetblue', 'darkgreen', 'darkpurple', 'pink']
+        color_map = {}
+        
+        if color_col != "None (All Red)":
+            unique_values = df[color_col].dropna().unique()
+            st.sidebar.markdown("**Select data to display:**")
             
-        st.sidebar.success(f"Loaded: {df_long['Year'].nunique()} Years, {df_long['Treatment'].nunique()} Treatments")
-
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        st.stop()
-
-    # BUTTON TO RUN
-    if st.button("Run Analysis", type="primary"):
-        log_lines = [] 
-        def log(txt): log_lines.append(str(txt))
-        
-        log(f"Transformation Used: {trans_type}")
-        
-        tab1, tab2 = st.tabs(["Individual Years", "Pooled Analysis"])
-        
-        # --- TAB 1: INDIVIDUAL YEARS ---
-        with tab1:
-            for year in df_long['Year'].unique():
-                st.subheader(f"Year: {year}")
-                log(f"\n--- YEAR {year} ANALYSIS ---")
-                
-                df_curr = df_long[df_long['Year'] == year]
-                res = run_anova(df_curr, 'Analyzed_Value')
-                
-                # Metrics
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Gen Mean", f"{res['mean']:.2f}")
-                c2.metric("SEm", f"{res['sem']:.3f}")
-                c3.metric("CD (5%)", f"{res['cd']:.3f}")
-                c4.metric("CV %", f"{res['cv']:.2f}")
-                
-                log(f"General Mean: {res['mean']:.3f} | CV%: {res['cv']:.2f}")
-                
-                # Table with SEm/CD columns
-                txt_table = format_anova_txt(res['anova'], res['sem'], res['cd'])
-                st.text(txt_table)
-                log(txt_table)
-        
-        # --- TAB 2: POOLED ANALYSIS ---
-        with tab2:
-            st.subheader("Pooled Analysis")
-            log("\n--- POOLED ANALYSIS ---")
+            selected_values = []
             
-            formula = 'Analyzed_Value ~ C(Year) + C(Replication):C(Year) + C(Treatment) + C(Year):C(Treatment)'
-            model_pool = ols(formula, data=df_long).fit()
-            anova_pool = sm.stats.anova_lm(model_pool, typ=1)
+            # Generate checkboxes and color legend
+            for i, val in enumerate(unique_values):
+                color_map[val] = palette[i % len(palette)]
+                
+                # Show colored dot next to checkbox
+                st.sidebar.markdown(f"<span style='color:{color_map[val]}'>●</span>", unsafe_allow_html=True)
+                is_checked = st.sidebar.checkbox(f"Show {val}", value=True, key=f"check_{val}")
+                
+                if is_checked:
+                    selected_values.append(val)
             
-            # Logic
-            try:
-                ms_err = anova_pool.loc['Residual', 'mean_sq']
-                df_err = anova_pool.loc['Residual', 'df']
-                ms_int = anova_pool.loc['C(Year):C(Treatment)', 'mean_sq']
-                df_int = anova_pool.loc['C(Year):C(Treatment)', 'df']
-                p_int = anova_pool.loc['C(Year):C(Treatment)', 'PR(>F)']
-                ms_trt = anova_pool.loc['C(Treatment)', 'mean_sq']
-                
-                is_sig_int = p_int < 0.05
-                if is_sig_int:
-                    valid_ms, valid_df = ms_int, df_int
-                    f_trt = ms_trt / ms_int
-                    note = "Tested vs Interaction (Significant *)"
-                else:
-                    valid_ms, valid_df = ms_err, df_err
-                    f_trt = ms_trt / ms_err
-                    note = "Tested vs Pooled Error (NS)"
-                
-                # Stats
-                n_yrs, n_reps = df_long['Year'].nunique(), df_long['Replication'].nunique()
-                sem_pool = np.sqrt(valid_ms / (n_yrs * n_reps))
-                cd_pool = sem_pool * np.sqrt(2) * stats.t.ppf(1 - 0.05/2, valid_df)
-                
-                # Interaction Stats
-                sem_int = np.sqrt(ms_err / n_reps) # SEm for interaction
-                cd_int = sem_int * np.sqrt(2) * stats.t.ppf(1 - 0.05/2, df_err)
+            # Filter the dataframe based on checkboxes
+            filtered_df = df[df[color_col].isin(selected_values)]
 
-                gm_pool = df_long['Analyzed_Value'].mean()
-                cv_pool = (np.sqrt(ms_err) / gm_pool) * 100
-                
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Interaction", "SIG *" if is_sig_int else "NS")
-                c2.metric("SEm (Trt)", f"{sem_pool:.3f}")
-                c3.metric("CD (Trt)", f"{cd_pool:.3f}")
-                c4.metric("CV %", f"{cv_pool:.2f}")
-                
-                log(f"Interaction: {'SIG' if is_sig_int else 'NS'} | CV%: {cv_pool:.2f}")
-                
-                # Manual Pooled Table with SEm/CD Columns
-                st.write("**Pooled ANOVA Table**")
-                p_txt = f"{'Source':<22} | {'DF':<4} | {'MS':<10} | {'F-Cal':<6} | {'Sig':<4} | {'SEm':<8} | {'CD':<8}\n" 
-                p_txt += "-"*90 + "\n"
-                
-                rows = [
-                    ('C(Replication):C(Year)', 'Rep(Year)'), 
-                    ('C(Year)', 'Year'), 
-                    ('C(Treatment)', 'Treatment'), 
-                    ('C(Year):C(Treatment)', 'Year x Trt'), 
-                    ('Residual', 'Pooled Error')
-                ]
-                
-                for code, name in rows:
-                    r = anova_pool.loc[code]
-                    s_val, c_val = "-", "-"
-                    
-                    if code == 'C(Treatment)':
-                         f_val, sig = f_trt, ("*" if (1-stats.f.cdf(f_trt, r['df'], valid_df)) < 0.05 else "NS")
-                         s_val, c_val = f"{sem_pool:.3f}", f"{cd_pool:.3f}"
-                    elif code == 'C(Year):C(Treatment)':
-                         f_val, sig = r['F'], ("*" if r['PR(>F)'] < 0.05 else "NS")
-                         # Show Interaction SEm/CD only if significant or if user wants to see it
-                         s_val, c_val = f"{sem_int:.3f}", (f"{cd_int:.3f}" if is_sig_int else "NS")
-                    elif code in ['Residual', 'C(Replication):C(Year)']:
-                         f_val, sig = np.nan, ""
-                    else:
-                         f_val, sig = r['F'], ("*" if r['PR(>F)'] < 0.05 else "NS")
-                    
-                    f_s = f"{f_val:.2f}" if not pd.isna(f_val) else "-"
-                    p_txt += f"{name:<22} | {int(r['df']):<4} | {r['mean_sq']:<10.2f} | {f_s:<6} | {sig:<4} | {s_val:<8} | {c_val:<8}\n"
-                
-                st.text(p_txt)
-                st.info(f"Note: {note}")
-                log(p_txt)
-                log(f"Note: {note}")
-
-            except Exception as e:
-                st.error(f"Pooled Error: {e}")
-
-        # --- MEAN TABLE GENERATION ---
-        st.subheader("Mean Table (Year x Treatment)")
-        log("\n--- MEAN TABLE ---")
-        
-        # Calculate means
-        means = df_long.groupby(['Treatment', 'Year'])['Analyzed_Value'].mean().unstack()
-        means['Pooled Mean'] = means.mean(axis=1)
-        
-        # Format table
-        mean_txt = f"{'Treatment':<10} |"
-        for col in means.columns:
-            mean_txt += f" {str(col):<10} |"
-        mean_txt += "\n" + "-" * (15 + 13 * len(means.columns)) + "\n"
-        
-        for idx, row in means.iterrows():
-            mean_txt += f"{str(idx):<10} |"
-            for val in row:
-                mean_txt += f" {val:<10.2f} |"
-            mean_txt += "\n"
+        # Plot the points
+        for _, row in filtered_df.iterrows():
+            loc_name = row.get('Location', "Unknown Location")
             
-        st.text(mean_txt)
-        log(mean_txt)
-
-        # --- PDF DOWNLOADER ---
-        pdf = PDFReport()
-        pdf.add_page()
-        pdf.set_font("Courier", size=9)
-        for line in log_lines:
-            pdf.multi_cell(0, 5, txt=line)
+            # Build HTML tooltip
+            tooltip_text = f"<b>Location:</b> {loc_name}"
             
-        pdf_out = pdf.output(dest='S').encode('latin-1')
-        st.download_button("📄 Download PDF Report", data=pdf_out, file_name="RBD_Report.pdf", mime="application/pdf")
+            if color_col != "None (All Red)" and pd.notna(row[color_col]):
+                category_val = row[color_col]
+                tooltip_text += f"<br><b>{color_col}:</b> {category_val}"
+            
+            # Assign color
+            marker_color = "red" 
+            if color_col != "None (All Red)" and pd.notna(row[color_col]):
+                marker_color = color_map.get(row[color_col], "gray")
+            
+            # Add marker to map
+            folium.CircleMarker(
+                location=[row['Latitude'], row['Longitude']],
+                radius=6,
+                color=marker_color,
+                fill=True,
+                fill_color=marker_color,
+                fill_opacity=0.8,
+                tooltip=tooltip_text,
+                popup=loc_name
+            ).add_to(m)
+            
+        st.success(f"Displaying {len(filtered_df)} out of {len(df)} sample points.")
+    else:
+        st.error("Your CSV file must contain exactly 'Latitude' and 'Longitude' as column headers.")
+
+# --- Finalize Map ---
+# The LayerControl must be added AFTER all tiles, geojson, and markers are added
+folium.LayerControl(position='topright').add_to(m)
+
+# Render in Streamlit
+st_folium(m, width=800, height=600)
+
+# --- Exporting ---
+st.info("💡 **Exporting for Print:** Click the download button below to save the interactive map as an HTML file. Open the HTML file in your web browser, select your preferred background layer, frame your shot, and use a screen capture tool or print to PDF for your thesis.")
+
+st.download_button(
+    label="Download Map (HTML)",
+    data=m._repr_html_(),
+    file_name="survey_map.html",
+    mime="text/html"
+)
