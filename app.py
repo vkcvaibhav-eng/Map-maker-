@@ -15,7 +15,7 @@ st.title("Gujarat Survey Map Generator")
 st.markdown("Generate professional, publication-ready maps for your Ph.D. thesis.")
 
 # --- Setup Tabs ---
-tab1, tab2 = st.tabs(["Interactive GPS Map", "Static Thesis Region Map"])
+tab1, tab2, tab3 = st.tabs(["Interactive GPS Map", "Static District Map", "Static Taluka Map"])
 
 # ==========================================
 # TAB 1: INTERACTIVE GPS MAP
@@ -134,24 +134,18 @@ with tab1:
 
 
 # ==========================================
-# TAB 2: STATIC THESIS REGION MAP (A4 ACADEMIC FORMAT)
+# TAB 2: STATIC DISTRICT MAP (A4 ACADEMIC FORMAT)
 # ==========================================
 with tab2:
-    st.header("Static Region Highlight Map (Academic Standard)")
-    st.markdown("Generate a zoomed-in A4 landscape map with an adjustable compass rose and inset.")
+    st.header("Static District Highlight Map")
+    st.markdown("Generate a zoomed-in A4 landscape map focusing on **District** boundaries.")
     
     district_geojson_path = "data/gujarat.geojson"
-    taluka_geojson_path = "data/gujarat_talukas.geojson"
     
     if not os.path.exists(district_geojson_path):
         st.error(f"Cannot find {district_geojson_path}. Please ensure your GeoJSON is in the data folder.")
     else:
         gdf = gpd.read_file(district_geojson_path)
-        
-        # Try to load talukas if they exist
-        gdf_talukas = None
-        if os.path.exists(taluka_geojson_path):
-            gdf_talukas = gpd.read_file(taluka_geojson_path)
         
         district_col = None
         for col in ['dtname', 'NAME_2', 'district', 'Dist_Name', 'district_name', 'REGNAME']:
@@ -174,7 +168,8 @@ with tab2:
                 selected_districts = st.multiselect(
                     "Select districts to highlight:",
                     options=all_districts,
-                    default=safe_defaults 
+                    default=safe_defaults,
+                    key="dist_select"
                 )
                 
                 st.subheader("2. Map Styling")
@@ -185,18 +180,11 @@ with tab2:
                     "viridis", "cividis", "plasma",
                     "Pastel1", "Set3", "Accent"
                 ]
-                color_map_choice = st.selectbox("Highlight Palette", modern_palettes)
-                
-                # New Taluka Toggle
-                show_talukas = False
-                if gdf_talukas is not None:
-                    show_talukas = st.checkbox("Overlay Taluka (Sub-district) Boundaries")
-                    st.caption("*Tip: Use this only when zoomed into 1-3 districts to avoid visual clutter.*")
+                color_map_choice = st.selectbox("Highlight Palette", modern_palettes, key="dist_color")
 
                 st.subheader("3. Element Placement")
-                st.markdown("Adjust these to prevent the inset or compass from overlapping your selected districts.")
-                inset_pos = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0)
-                compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0)
+                inset_pos = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
+                compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
                 
             with col4:
                 inset_coords = {
@@ -205,7 +193,6 @@ with tab2:
                     "Bottom Left": [0.05, 0.05, 0.25, 0.25],
                     "Bottom Right": [0.70, 0.05, 0.25, 0.25]
                 }
-                
                 compass_coords = {
                     "Top Right": [0.85, 0.70, 0.1, 0.1],
                     "Top Left": [0.05, 0.70, 0.1, 0.1],
@@ -214,59 +201,32 @@ with tab2:
                 }
 
                 fig, ax_main = plt.subplots(figsize=(11.69, 8.27), dpi=300)
-                
-                # FORCE THESIS BINDING MARGIN
                 plt.subplots_adjust(top=0.82, bottom=0.05, left=0.05, right=0.95)
                 
                 if selected_districts:
-                    # 1. MAIN MAP: Plot ONLY the selected districts
                     highlighted_gdf = gdf[gdf[district_col].isin(selected_districts)]
                     
                     if color_map_choice == "None (White)":
                         highlighted_gdf.plot(ax=ax_main, color='white', edgecolor='black', linewidth=1.5)
                     else:
                         highlighted_gdf.plot(
-                            ax=ax_main, 
-                            column=district_col, 
-                            cmap=color_map_choice, 
-                            edgecolor='black', 
-                            linewidth=1.5, # Slightly thicker district borders
-                            legend=False
+                            ax=ax_main, column=district_col, cmap=color_map_choice, 
+                            edgecolor='black', linewidth=1.5, legend=False
                         )
                     
-                    # 1b. OVERLAY TALUKAS (if checked)
-                    if show_talukas and gdf_talukas is not None:
-                        # Draw thin, dashed grey lines over the colored districts
-                        # facecolor="none" ensures it doesn't cover up your palette colors
-                        gdf_talukas.plot(
-                            ax=ax_main, 
-                            facecolor="none", 
-                            edgecolor='#333333', 
-                            linewidth=0.4, 
-                            linestyle='--', 
-                            alpha=0.7
-                        )
-                    
-                    # Add district names to main map with white halos for readability
                     import matplotlib.patheffects as pe
                     for idx, row in highlighted_gdf.iterrows():
                         centroid = row.geometry.centroid
                         ax_main.annotate(
-                            text=row[district_col],
-                            xy=(centroid.x, centroid.y),
-                            horizontalalignment='center',
-                            verticalalignment='center',
-                            fontsize=12,
-                            fontweight='bold',
-                            color='black',
+                            text=row[district_col], xy=(centroid.x, centroid.y),
+                            horizontalalignment='center', verticalalignment='center',
+                            fontsize=12, fontweight='bold', color='black',
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
-                    # 2. ACADEMIC COMPASS ROSE
                     ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
                     ax_compass.set_aspect('equal')
-                    
                     w = 0.15 
                     ax_compass.add_patch(patches.Polygon([[0, 0], [0, 1], [w, 0]], facecolor='black', edgecolor='black', lw=0.5))
                     ax_compass.add_patch(patches.Polygon([[0, 0], [0, 1], [-w, 0]], facecolor='white', edgecolor='black', lw=0.5))
@@ -276,30 +236,23 @@ with tab2:
                     ax_compass.add_patch(patches.Polygon([[0, 0], [1, 0], [0, -w]], facecolor='white', edgecolor='black', lw=0.5))
                     ax_compass.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, w]], facecolor='white', edgecolor='black', lw=0.5))
                     ax_compass.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, -w]], facecolor='black', edgecolor='black', lw=0.5))
-
                     font_props = {'family': 'serif', 'fontweight': 'bold', 'fontsize': 14}
                     ax_compass.text(0, 1.25, 'N', ha='center', va='center', **font_props)
                     ax_compass.text(0, -1.25, 'S', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
                     ax_compass.text(1.25, 0, 'E', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
                     ax_compass.text(-1.25, 0, 'W', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
-                    
                     ax_compass.set_xlim(-1.5, 1.5)
                     ax_compass.set_ylim(-1.5, 1.5)
 
-                    # 3. INSET MAP
                     ax_inset = fig.add_axes(inset_coords[inset_pos]) 
-                    
                     gdf.plot(ax=ax_inset, color='white', edgecolor='gray', linewidth=0.5)
-                    
                     if color_map_choice == "None (White)":
                         highlighted_gdf.plot(ax=ax_inset, color='#d3d3d3', edgecolor='black', linewidth=0.8)
                     else:
                         highlighted_gdf.plot(ax=ax_inset, color='#ff66b2', edgecolor='black', linewidth=0.8)
-                    
                     ax_inset.set_xticks([])
                     ax_inset.set_yticks([])
                     ax_inset.set_title("Gujarat State", fontsize=11, fontweight='bold', pad=4)
-                    
                     for spine in ax_inset.spines.values():
                         spine.set_edgecolor('black')
                         spine.set_linewidth(1)
@@ -313,17 +266,87 @@ with tab2:
                 ax_main.set_xticks([])
                 ax_main.set_yticks([])
                 ax_main.set_frame_on(False)
-                
                 st.pyplot(fig)
                 
-                # --- Export High-Res Image ---
                 buf = io.BytesIO()
                 fig.savefig(buf, format="png", dpi=300)
                 buf.seek(0)
-                
                 st.download_button(
-                    label="Download High-Resolution Map (PNG)",
+                    label="Download District Map (PNG)",
                     data=buf,
-                    file_name="academic_survey_map_A4.png",
-                    mime="image/png"
+                    file_name="academic_survey_district_map.png",
+                    mime="image/png",
+                    key="btn_dist"
                 )
+
+# ==========================================
+# TAB 3: STATIC TALUKA MAP (NEW - A4 ACADEMIC FORMAT)
+# ==========================================
+with tab3:
+    st.header("Static Taluka Highlight Map")
+    st.markdown("Generate a zoomed-in A4 landscape map focusing on **Taluka (Sub-district)** boundaries.")
+    
+    taluka_geojson_path = "data/gujarat_talukas.geojson"
+    state_geojson_path = "data/gujarat_state.geojson"
+    
+    if not os.path.exists(taluka_geojson_path):
+        st.error(f"Cannot find {taluka_geojson_path}. Please ensure your GeoJSON is in the data folder.")
+    else:
+        gdf_talukas = gpd.read_file(taluka_geojson_path)
+        
+        # Detect the Taluka column name safely
+        taluka_col = None
+        for col in ['NAME_3', 'taluka', 'Taluka_Name', 'taluka_name', 'TALUKA', 'Sub_Distri', 'subdistrict', 'Taluka']:
+            if col in gdf_talukas.columns:
+                taluka_col = col
+                break
+                
+        if not taluka_col:
+            st.error(f"Could not automatically detect the taluka name column in your GeoJSON. Available columns: {list(gdf_talukas.columns)}")
+        else:
+            col5, col6 = st.columns([1, 3])
+            
+            with col5:
+                st.subheader("1. Select Surveyed Regions")
+                all_talukas = sorted(gdf_talukas[taluka_col].dropna().unique().tolist())
+                
+                selected_talukas = st.multiselect(
+                    "Select talukas to highlight:",
+                    options=all_talukas,
+                    key="taluka_select"
+                )
+                
+                st.subheader("2. Map Styling")
+                modern_palettes = [
+                    "None (White)", 
+                    "Set2", "Dark2", "Paired", "tab10",
+                    "Greens", "Blues", "YlGnBu", "OrRd",
+                    "viridis", "cividis", "plasma",
+                    "Pastel1", "Set3", "Accent"
+                ]
+                color_map_choice_taluka = st.selectbox("Highlight Palette", modern_palettes, key="taluka_color")
+
+                st.subheader("3. Element Placement")
+                inset_pos_t = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
+                compass_pos_t = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
+                
+            with col6:
+                inset_coords_t = {
+                    "Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25],
+                    "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]
+                }
+                compass_coords_t = {
+                    "Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1],
+                    "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]
+                }
+
+                fig_t, ax_main_t = plt.subplots(figsize=(11.69, 8.27), dpi=300)
+                plt.subplots_adjust(top=0.82, bottom=0.05, left=0.05, right=0.95)
+                
+                if selected_talukas:
+                    highlighted_talukas = gdf_talukas[gdf_talukas[taluka_col].isin(selected_talukas)]
+                    
+                    if color_map_choice_taluka == "None (White)":
+                        highlighted_talukas.plot(ax=ax_main_t, color='white', edgecolor='black', linewidth=1.5)
+                    else:
+                        highlighted
