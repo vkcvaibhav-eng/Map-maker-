@@ -4,6 +4,7 @@ from streamlit_folium import st_folium
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import io
 import os
 
@@ -137,7 +138,7 @@ with tab1:
 # ==========================================
 with tab2:
     st.header("Static Region Highlight Map (Academic Standard)")
-    st.markdown("Generate a zoomed-in A4 landscape map with a state-wide inset.")
+    st.markdown("Generate a zoomed-in A4 landscape map with a professional compass rose and inset.")
     
     district_geojson_path = "data/gujarat.geojson"
     
@@ -172,7 +173,6 @@ with tab2:
                 
                 st.subheader("2. Map Styling")
                 plate_title = st.text_area("Plate Title / Caption", value="Plate 3.1: Map showing the districts of middle Gujarat surveyed for the collection of pink bollworm, P. gossypiella", height=100)
-                # Added "None (White)" to strip out color as requested
                 color_map_choice = st.selectbox("Highlight Palette", ["None (White)", "Pastel1", "Set3", "Accent", "tab20c"])
                 
             with col4:
@@ -210,13 +210,37 @@ with tab2:
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
-                    # 2. CARTOGRAPHIC ELEMENTS (Refined North Arrow)
-                    # Placed neatly in the top right, 'N' above the arrow
-                    ax_main.text(0.95, 0.96, 'N', transform=ax_main.transAxes,
-                                 ha='center', va='bottom', fontsize=18, fontweight='bold')
-                    ax_main.annotate('', xy=(0.95, 0.95), xytext=(0.95, 0.88),
-                                     xycoords='axes fraction', textcoords='axes fraction',
-                                     arrowprops=dict(facecolor='black', width=3, headwidth=10, shrink=0))
+                    # 2. ACADEMIC COMPASS ROSE (Independent Axis Placement)
+                    # Create a dedicated axis for the compass, perfectly positioned in the top right corner white space
+                    ax_compass = fig.add_axes([0.85, 0.75, 0.1, 0.1])
+                    ax_compass.set_axis_off()
+                    ax_compass.set_aspect('equal')
+                    
+                    # Draw the 3D-shaded compass polygons
+                    w = 0.15 # Width of the star points
+                    # North pointing up
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [0, 1], [w, 0]], facecolor='black', edgecolor='black', lw=0.5))
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [0, 1], [-w, 0]], facecolor='white', edgecolor='black', lw=0.5))
+                    # South point
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [0, -1], [w, 0]], facecolor='white', edgecolor='black', lw=0.5))
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [0, -1], [-w, 0]], facecolor='black', edgecolor='black', lw=0.5))
+                    # East point
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [1, 0], [0, w]], facecolor='black', edgecolor='black', lw=0.5))
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [1, 0], [0, -w]], facecolor='white', edgecolor='black', lw=0.5))
+                    # West point
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, w]], facecolor='white', edgecolor='black', lw=0.5))
+                    ax_compass.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, -w]], facecolor='black', edgecolor='black', lw=0.5))
+
+                    # Add elegant serif typography for directions
+                    font_props = {'family': 'serif', 'fontweight': 'bold', 'fontsize': 14}
+                    ax_compass.text(0, 1.25, 'N', ha='center', va='center', **font_props)
+                    ax_compass.text(0, -1.25, 'S', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                    ax_compass.text(1.25, 0, 'E', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                    ax_compass.text(-1.25, 0, 'W', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                    
+                    # Keep the compass tight to its box
+                    ax_compass.set_xlim(-1.5, 1.5)
+                    ax_compass.set_ylim(-1.5, 1.5)
 
                     # 3. INSET MAP: Add the small map in the top left
                     ax_inset = fig.add_axes([0.05, 0.65, 0.28, 0.28]) 
@@ -226,7 +250,6 @@ with tab2:
                     
                     # Highlight selected region based on color choice
                     if color_map_choice == "None (White)":
-                        # If main map is white, shade the inset gray to stand out
                         highlighted_gdf.plot(ax=ax_inset, color='#d3d3d3', edgecolor='black', linewidth=0.8)
                     else:
                         highlighted_gdf.plot(ax=ax_inset, color='#ff66b2', edgecolor='black', linewidth=0.8)
