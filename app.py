@@ -203,10 +203,10 @@ with tab2:
                     else:
                         highlighted_gdf.plot(ax=ax_main, column=district_col, cmap=color_map_choice, edgecolor='black', linewidth=1.5, legend=False)
                     
-                    # DYNAMIC TIGHT CROPPING (Ensures maximum size on page)
+                    # DYNAMIC TIGHT CROPPING (With 25% safety margin to prevent overlap)
                     minx, miny, maxx, maxy = highlighted_gdf.total_bounds
-                    margin_x = max((maxx - minx) * 0.05, 0.01)
-                    margin_y = max((maxy - miny) * 0.05, 0.01)
+                    margin_x = max((maxx - minx) * 0.25, 0.05)
+                    margin_y = max((maxy - miny) * 0.25, 0.05)
                     ax_main.set_xlim(minx - margin_x, maxx + margin_x)
                     ax_main.set_ylim(miny - margin_y, maxy + margin_y)
                     
@@ -337,10 +337,10 @@ with tab3:
                     else:
                         highlighted_talukas.plot(ax=ax_main_t, column=taluka_col, cmap=color_map_choice_taluka, edgecolor='black', linewidth=1.5, legend=False)
                     
-                    # DYNAMIC TIGHT CROPPING (Ensures maximum size on page)
+                    # DYNAMIC TIGHT CROPPING (With 25% safety margin to prevent overlap)
                     minx, miny, maxx, maxy = highlighted_talukas.total_bounds
-                    margin_x = max((maxx - minx) * 0.05, 0.01)
-                    margin_y = max((maxy - miny) * 0.05, 0.01)
+                    margin_x = max((maxx - minx) * 0.25, 0.05)
+                    margin_y = max((maxy - miny) * 0.25, 0.05)
                     ax_main_t.set_xlim(minx - margin_x, maxx + margin_x)
                     ax_main_t.set_ylim(miny - margin_y, maxy + margin_y)
                     
