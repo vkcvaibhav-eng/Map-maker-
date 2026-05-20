@@ -141,11 +141,17 @@ with tab2:
     st.markdown("Generate a zoomed-in A4 landscape map with an adjustable compass rose and inset.")
     
     district_geojson_path = "data/gujarat.geojson"
+    taluka_geojson_path = "data/gujarat_talukas.geojson"
     
     if not os.path.exists(district_geojson_path):
         st.error(f"Cannot find {district_geojson_path}. Please ensure your GeoJSON is in the data folder.")
     else:
         gdf = gpd.read_file(district_geojson_path)
+        
+        # Try to load talukas if they exist
+        gdf_talukas = None
+        if os.path.exists(taluka_geojson_path):
+            gdf_talukas = gpd.read_file(taluka_geojson_path)
         
         district_col = None
         for col in ['dtname', 'NAME_2', 'district', 'Dist_Name', 'district_name', 'REGNAME']:
@@ -180,6 +186,12 @@ with tab2:
                     "Pastel1", "Set3", "Accent"
                 ]
                 color_map_choice = st.selectbox("Highlight Palette", modern_palettes)
+                
+                # New Taluka Toggle
+                show_talukas = False
+                if gdf_talukas is not None:
+                    show_talukas = st.checkbox("Overlay Taluka (Sub-district) Boundaries")
+                    st.caption("*Tip: Use this only when zoomed into 1-3 districts to avoid visual clutter.*")
 
                 st.subheader("3. Element Placement")
                 st.markdown("Adjust these to prevent the inset or compass from overlapping your selected districts.")
@@ -187,7 +199,6 @@ with tab2:
                 compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0)
                 
             with col4:
-                # Coordinate dictionaries shifted down slightly to respect the new top binding margin
                 inset_coords = {
                     "Top Left": [0.05, 0.55, 0.25, 0.25],
                     "Top Right": [0.70, 0.55, 0.25, 0.25],
@@ -202,11 +213,9 @@ with tab2:
                     "Bottom Left": [0.05, 0.05, 0.1, 0.1]
                 }
 
-                # Create the main figure strictly sized to A4 Landscape (11.69 x 8.27 inches)
                 fig, ax_main = plt.subplots(figsize=(11.69, 8.27), dpi=300)
                 
                 # FORCE THESIS BINDING MARGIN
-                # top=0.82 ensures the top 18% of the A4 page is perfectly blank
                 plt.subplots_adjust(top=0.82, bottom=0.05, left=0.05, right=0.95)
                 
                 if selected_districts:
@@ -214,15 +223,28 @@ with tab2:
                     highlighted_gdf = gdf[gdf[district_col].isin(selected_districts)]
                     
                     if color_map_choice == "None (White)":
-                        highlighted_gdf.plot(ax=ax_main, color='white', edgecolor='black', linewidth=1.2)
+                        highlighted_gdf.plot(ax=ax_main, color='white', edgecolor='black', linewidth=1.5)
                     else:
                         highlighted_gdf.plot(
                             ax=ax_main, 
                             column=district_col, 
                             cmap=color_map_choice, 
                             edgecolor='black', 
-                            linewidth=1.2,
+                            linewidth=1.5, # Slightly thicker district borders
                             legend=False
+                        )
+                    
+                    # 1b. OVERLAY TALUKAS (if checked)
+                    if show_talukas and gdf_talukas is not None:
+                        # Draw thin, dashed grey lines over the colored districts
+                        # facecolor="none" ensures it doesn't cover up your palette colors
+                        gdf_talukas.plot(
+                            ax=ax_main, 
+                            facecolor="none", 
+                            edgecolor='#333333', 
+                            linewidth=0.4, 
+                            linestyle='--', 
+                            alpha=0.7
                         )
                     
                     # Add district names to main map with white halos for readability
@@ -234,33 +256,27 @@ with tab2:
                             xy=(centroid.x, centroid.y),
                             horizontalalignment='center',
                             verticalalignment='center',
-                            fontsize=11,
+                            fontsize=12,
                             fontweight='bold',
                             color='black',
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
-                    # 2. ACADEMIC COMPASS ROSE (Dynamic Placement)
+                    # 2. ACADEMIC COMPASS ROSE
                     ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
                     ax_compass.set_aspect('equal')
                     
-                    # Draw the 3D-shaded compass polygons
-                    w = 0.15 # Width of the star points
-                    # North pointing up
+                    w = 0.15 
                     ax_compass.add_patch(patches.Polygon([[0, 0], [0, 1], [w, 0]], facecolor='black', edgecolor='black', lw=0.5))
                     ax_compass.add_patch(patches.Polygon([[0, 0], [0, 1], [-w, 0]], facecolor='white', edgecolor='black', lw=0.5))
-                    # South point
                     ax_compass.add_patch(patches.Polygon([[0, 0], [0, -1], [w, 0]], facecolor='white', edgecolor='black', lw=0.5))
                     ax_compass.add_patch(patches.Polygon([[0, 0], [0, -1], [-w, 0]], facecolor='black', edgecolor='black', lw=0.5))
-                    # East point
                     ax_compass.add_patch(patches.Polygon([[0, 0], [1, 0], [0, w]], facecolor='black', edgecolor='black', lw=0.5))
                     ax_compass.add_patch(patches.Polygon([[0, 0], [1, 0], [0, -w]], facecolor='white', edgecolor='black', lw=0.5))
-                    # West point
                     ax_compass.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, w]], facecolor='white', edgecolor='black', lw=0.5))
                     ax_compass.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, -w]], facecolor='black', edgecolor='black', lw=0.5))
 
-                    # Add elegant serif typography for directions
                     font_props = {'family': 'serif', 'fontweight': 'bold', 'fontsize': 14}
                     ax_compass.text(0, 1.25, 'N', ha='center', va='center', **font_props)
                     ax_compass.text(0, -1.25, 'S', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
@@ -270,36 +286,30 @@ with tab2:
                     ax_compass.set_xlim(-1.5, 1.5)
                     ax_compass.set_ylim(-1.5, 1.5)
 
-                    # 3. INSET MAP: (Dynamic Placement)
+                    # 3. INSET MAP
                     ax_inset = fig.add_axes(inset_coords[inset_pos]) 
                     
-                    # Plot whole state in white
                     gdf.plot(ax=ax_inset, color='white', edgecolor='gray', linewidth=0.5)
                     
-                    # Highlight selected region based on color choice
                     if color_map_choice == "None (White)":
                         highlighted_gdf.plot(ax=ax_inset, color='#d3d3d3', edgecolor='black', linewidth=0.8)
                     else:
                         highlighted_gdf.plot(ax=ax_inset, color='#ff66b2', edgecolor='black', linewidth=0.8)
                     
-                    # Style the inset map
                     ax_inset.set_xticks([])
                     ax_inset.set_yticks([])
                     ax_inset.set_title("Gujarat State", fontsize=11, fontweight='bold', pad=4)
                     
-                    # Draw a thin box around the inset map
                     for spine in ax_inset.spines.values():
                         spine.set_edgecolor('black')
                         spine.set_linewidth(1)
                     
                 else:
-                    # Fallback if nothing is selected
                     gdf.plot(ax=ax_main, color='white', edgecolor='black')
                     ax_main.text(0.5, 0.5, "Select districts to render map.", 
                                  horizontalalignment='center', verticalalignment='center', 
                                  transform=ax_main.transAxes, fontsize=14, color='gray')
 
-                # Remove axis from main map for a clean look
                 ax_main.set_xticks([])
                 ax_main.set_yticks([])
                 ax_main.set_frame_on(False)
@@ -308,8 +318,6 @@ with tab2:
                 
                 # --- Export High-Res Image ---
                 buf = io.BytesIO()
-                
-                # Removed bbox_inches="tight" to preserve the blank binding margin physically in the PNG
                 fig.savefig(buf, format="png", dpi=300)
                 buf.seek(0)
                 
