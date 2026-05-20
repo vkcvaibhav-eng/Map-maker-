@@ -17,7 +17,7 @@ st.markdown("Generate professional, publication-ready maps for your Ph.D. thesis
 tab1, tab2 = st.tabs(["Interactive GPS Map", "Static Thesis Region Map"])
 
 # ==========================================
-# TAB 1: INTERACTIVE GPS MAP (Original App)
+# TAB 1: INTERACTIVE GPS MAP
 # ==========================================
 with tab1:
     st.header("Interactive Point Map")
@@ -133,11 +133,11 @@ with tab1:
 
 
 # ==========================================
-# TAB 2: STATIC THESIS REGION MAP (INSET STYLE)
+# TAB 2: STATIC THESIS REGION MAP (ACADEMIC INSET STYLE)
 # ==========================================
 with tab2:
-    st.header("Static Region Highlight Map (Inset Style)")
-    st.markdown("Generate a zoomed-in main map with a state-wide inset, exactly like the *P. gossypiella* reference plate.")
+    st.header("Static Region Highlight Map (Academic Standard)")
+    st.markdown("Generate a zoomed-in main map with a state-wide inset, complete with standard cartographic elements.")
     
     district_geojson_path = "data/gujarat.geojson"
     
@@ -146,9 +146,7 @@ with tab2:
     else:
         gdf = gpd.read_file(district_geojson_path)
         
-# Ensure we have a column that uniquely identifies districts
         district_col = None
-        # Added 'district_name' and 'REGNAME' to match your specific GeoJSON file
         for col in ['dtname', 'NAME_2', 'district', 'Dist_Name', 'district_name', 'REGNAME']:
             if col in gdf.columns:
                 district_col = col
@@ -163,11 +161,9 @@ with tab2:
                 st.subheader("1. Select Surveyed Regions")
                 all_districts = sorted(gdf[district_col].dropna().unique().tolist())
                 
-                # Create a list of the districts we want to highlight by default
-                ideal_defaults = ["Ahmedabad", "Anand", "Vadodara", "Kheda", "Panchmahal", "Dahod", "Mahisagar", "Chhotaudepur", "Botad"]
-                
-                # Only use defaults that actually match the spelling in your GeoJSON file
-                safe_defaults = [d for d in ideal_defaults if d in all_districts]
+                # Broad, case-insensitive match for the middle Gujarat cluster
+                ideal_defaults = ["ahmedabad", "anand", "vadodara", "kheda", "panchmahal", "panch mahal", "dahod", "mahisagar", "chhotaudepur", "botad"]
+                safe_defaults = [d for d in all_districts if str(d).lower().strip() in ideal_defaults]
                 
                 selected_districts = st.multiselect(
                     "Select districts to highlight:",
@@ -175,13 +171,18 @@ with tab2:
                     default=safe_defaults 
                 )
                 
+                if not selected_districts:
+                    st.info("👈 Please select at least one district from the dropdown to generate the survey map.")
+                
                 st.subheader("2. Map Styling")
                 plate_title = st.text_area("Plate Title / Caption", value="Plate 3.1: Map showing the districts of middle Gujarat surveyed for the collection of pink bollworm, P. gossypiella", height=100)
                 color_map_choice = st.selectbox("Highlight Palette", ["Pastel1", "Set3", "Accent", "tab20c"])
                 
             with col4:
-                # Create the main figure
-                fig, ax_main = plt.subplots(figsize=(10, 7), dpi=300)
+                # Create the main figure with a neatline (border)
+                fig, ax_main = plt.subplots(figsize=(10, 8), dpi=300)
+                fig.patch.set_linewidth(2) # Adds a border around the entire exported image
+                fig.patch.set_edgecolor('black')
                 
                 if selected_districts:
                     # 1. MAIN MAP: Plot ONLY the selected districts
@@ -196,7 +197,8 @@ with tab2:
                         legend=False
                     )
                     
-                    # Add district names to main map
+                    # Add district names to main map with white halos for readability
+                    import matplotlib.patheffects as pe
                     for idx, row in highlighted_gdf.iterrows():
                         centroid = row.geometry.centroid
                         ax_main.annotate(
@@ -204,63 +206,82 @@ with tab2:
                             xy=(centroid.x, centroid.y),
                             horizontalalignment='center',
                             verticalalignment='center',
-                            fontsize=9,
+                            fontsize=10,
                             fontweight='bold',
-                            color='black'
+                            color='black',
+                            path_effects=[pe.withStroke(linewidth=3, foreground="white")] # White text outline
                         )
                         
-                    # 2. INSET MAP: Add the small map in the top left
-                    # Coordinates: [left, bottom, width, height] as fractions of figure
-                    ax_inset = fig.add_axes([0.05, 0.65, 0.25, 0.25]) 
+                    # 2. CARTOGRAPHIC ELEMENTS (North Arrow)
+                    # Placed in the top right corner of the main map
+                    ax_main.annotate('N', xy=(0.95, 0.95), xytext=(0.95, 0.88),
+                                    arrowprops=dict(facecolor='black', width=3, headwidth=10, headlength=12),
+                                    ha='center', va='center', fontsize=14, fontweight='bold',
+                                    xycoords='axes fraction')
+
+                    # 3. INSET MAP: Add the small map in the top left
+                    ax_inset = fig.add_axes([0.05, 0.65, 0.28, 0.28]) 
                     
-                    # Plot whole state in white
-                    gdf.plot(ax=ax_inset, color='white', edgecolor='gray', linewidth=0.5)
+                    # Plot whole state in off-white
+                    gdf.plot(ax=ax_inset, color='#f7f7f7', edgecolor='gray', linewidth=0.5)
                     # Highlight selected region in pink
-                    highlighted_gdf.plot(ax=ax_inset, color='#ff99cc', edgecolor='black', linewidth=0.5)
+                    highlighted_gdf.plot(ax=ax_inset, color='#ff66b2', edgecolor='black', linewidth=0.8)
                     
-                    # Remove axis from inset map
+                    # Style the inset map
                     ax_inset.set_xticks([])
                     ax_inset.set_yticks([])
-                    ax_inset.set_frame_on(False)
+                    ax_inset.set_title("Gujarat State", fontsize=11, fontweight='bold', pad=4)
+                    
+                    # Draw a box around the inset map
+                    for spine in ax_inset.spines.values():
+                        spine.set_edgecolor('black')
+                        spine.set_linewidth(1)
                     
                 else:
                     # Fallback if nothing is selected
                     gdf.plot(ax=ax_main, color='white', edgecolor='black')
+                    ax_main.text(0.5, 0.5, "Select districts to render map.", 
+                                 horizontalalignment='center', verticalalignment='center', 
+                                 transform=ax_main.transAxes, fontsize=14, color='gray')
 
                 # Remove axis from main map for a clean look
                 ax_main.set_xticks([])
                 ax_main.set_yticks([])
                 ax_main.set_frame_on(False)
                 
-                # 3. TITLE BLOCK: Blue rectangle at the bottom
+                # 4. TITLE BLOCK: Blue rectangle at the bottom
                 if plate_title:
                     plt.figtext(
-                        0.5, 0.05,  # Positioned at the bottom center
+                        0.5, 0.04,  
                         plate_title, 
                         wrap=True, 
                         horizontalalignment='center', 
                         verticalalignment='center',
-                        fontsize=12, 
+                        fontsize=13, 
                         fontweight='bold', 
                         color="white",
                         bbox=dict(
-                            facecolor="#4A7EBB", # The matching blue shade
+                            facecolor="#4A7EBB", 
                             edgecolor="black", 
-                            boxstyle="square,pad=1", # Pad adds space around text
-                            linewidth=0.5
+                            boxstyle="square,pad=1.2", 
+                            linewidth=1
                         )
                     )
+                
+                # Adjust layout to make room for the title block
+                plt.subplots_adjust(bottom=0.15)
                 
                 st.pyplot(fig)
                 
                 # --- Export High-Res Image ---
                 buf = io.BytesIO()
-                fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+                # Use bbox_inches=tight but maintain the pad so the border is captured
+                fig.savefig(buf, format="png", dpi=300, bbox_inches="tight", pad_inches=0.2)
                 buf.seek(0)
                 
                 st.download_button(
                     label="Download High-Resolution Map (PNG)",
                     data=buf,
-                    file_name="thesis_survey_map_inset.png",
+                    file_name="academic_survey_map.png",
                     mime="image/png"
                 )
