@@ -66,9 +66,16 @@ with tab1:
                 st.warning(f"Boundary file not found: {file_path}. Please check your data folder.")
 
         if uploaded_file:
+            # Bulletproof CSV Loading
             df = pd.read_csv(uploaded_file)
+            df.columns = df.columns.str.strip()
+            df = df.loc[:, ~df.columns.duplicated()]
             
             if 'Latitude' in df.columns and 'Longitude' in df.columns:
+                df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+                df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+                df = df.dropna(subset=['Latitude', 'Longitude'])
+                
                 with col1:
                     st.markdown("---")
                     st.subheader("3. Map Styling & Filtering")
@@ -120,7 +127,7 @@ with tab1:
                     
                 st.success(f"Displaying {len(filtered_df)} out of {len(df)} sample points.")
             else:
-                st.error("Your CSV file must contain exactly 'Latitude' and 'Longitude' as column headers.")
+                st.error("⚠️ Your CSV file must contain exactly 'Latitude' and 'Longitude' as column headers.")
 
         folium.LayerControl(position='topright').add_to(m)
         st_folium(m, width=800, height=500)
@@ -183,17 +190,32 @@ with tab2:
                 inset_pos = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
                 compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
                 
-                # --- NEW: SURVEY OVERLAY ---
+                # --- NEW: BULLETPROOF SURVEY OVERLAY ---
                 st.subheader("4. Overlay Survey Points")
                 uploaded_file_d = st.file_uploader("Upload GPS CSV", type=["csv"], key="dist_csv")
+                df_points_d = None
+                
                 if uploaded_file_d:
                     point_color_d = st.color_picker("Choose Point Color", "#FF0000", key="dist_pt_color")
+                    
+                    df_d = pd.read_csv(uploaded_file_d)
+                    df_d.columns = df_d.columns.str.strip()
+                    df_d = df_d.loc[:, ~df_d.columns.duplicated()]
+                    
+                    if 'Latitude' not in df_d.columns or 'Longitude' not in df_d.columns:
+                        st.error("⚠️ Your CSV is missing 'Latitude' and 'Longitude' headers.")
+                    else:
+                        df_d['Latitude'] = pd.to_numeric(df_d['Latitude'], errors='coerce')
+                        df_d['Longitude'] = pd.to_numeric(df_d['Longitude'], errors='coerce')
+                        df_points_d = df_d.dropna(subset=['Latitude', 'Longitude'])
+                        if df_points_d.empty:
+                            st.warning("⚠️ No valid numeric coordinates found.")
+                            df_points_d = None
 
             with col4:
                 inset_coords = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
                 compass_coords = {"Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1], "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]}
 
-                # Adjust canvas size based on orientation
                 if orientation_d == "Landscape (A4)":
                     fig, ax_main = plt.subplots(figsize=(11.69, 8.27), dpi=300)
                 else:
@@ -209,7 +231,6 @@ with tab2:
                     else:
                         highlighted_gdf.plot(ax=ax_main, column=district_col, cmap=color_map_choice, edgecolor='black', linewidth=1.5, legend=False)
                     
-                    # DYNAMIC TIGHT CROPPING (With 25% safety margin to prevent overlap)
                     minx, miny, maxx, maxy = highlighted_gdf.total_bounds
                     margin_x = max((maxx - minx) * 0.25, 0.05)
                     margin_y = max((maxy - miny) * 0.25, 0.05)
@@ -226,15 +247,12 @@ with tab2:
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
-                    # --- NEW: PLOT GPS POINTS ---
-                    if uploaded_file_d:
-                        df_d = pd.read_csv(uploaded_file_d)
-                        if 'Latitude' in df_d.columns and 'Longitude' in df_d.columns:
-                            df_points = df_d.dropna(subset=['Latitude', 'Longitude'])
-                            ax_main.scatter(df_points['Longitude'], df_points['Latitude'], 
-                                            color=point_color_d, edgecolor='black', 
-                                            s=45, zorder=5, linewidth=0.8)
-                            
+                    # --- NEW: PLOT GPS POINTS (USING .values TO PREVENT CRASHES) ---
+                    if df_points_d is not None:
+                        ax_main.scatter(df_points_d['Longitude'].values, df_points_d['Latitude'].values, 
+                                        color=point_color_d, edgecolor='black', 
+                                        s=45, zorder=5, linewidth=0.8)
+                        
                     ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
                     ax_compass.set_aspect('equal')
@@ -332,17 +350,32 @@ with tab3:
                 inset_pos_t = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
                 compass_pos_t = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
                 
-                # --- NEW: SURVEY OVERLAY ---
+                # --- NEW: BULLETPROOF SURVEY OVERLAY ---
                 st.subheader("4. Overlay Survey Points")
                 uploaded_file_t = st.file_uploader("Upload GPS CSV", type=["csv"], key="taluka_csv")
+                df_points_t = None
+                
                 if uploaded_file_t:
                     point_color_t = st.color_picker("Choose Point Color", "#FF0000", key="taluka_pt_color")
+                    
+                    df_t = pd.read_csv(uploaded_file_t)
+                    df_t.columns = df_t.columns.str.strip()
+                    df_t = df_t.loc[:, ~df_t.columns.duplicated()]
+                    
+                    if 'Latitude' not in df_t.columns or 'Longitude' not in df_t.columns:
+                        st.error("⚠️ Your CSV is missing 'Latitude' and 'Longitude' headers.")
+                    else:
+                        df_t['Latitude'] = pd.to_numeric(df_t['Latitude'], errors='coerce')
+                        df_t['Longitude'] = pd.to_numeric(df_t['Longitude'], errors='coerce')
+                        df_points_t = df_t.dropna(subset=['Latitude', 'Longitude'])
+                        if df_points_t.empty:
+                            st.warning("⚠️ No valid numeric coordinates found.")
+                            df_points_t = None
 
             with col6:
                 inset_coords_t = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
                 compass_coords_t = {"Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1], "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]}
 
-                # Adjust canvas size based on orientation
                 if orientation_t == "Landscape (A4)":
                     fig_t, ax_main_t = plt.subplots(figsize=(11.69, 8.27), dpi=300)
                 else:
@@ -358,7 +391,6 @@ with tab3:
                     else:
                         highlighted_talukas.plot(ax=ax_main_t, column=taluka_col, cmap=color_map_choice_taluka, edgecolor='black', linewidth=1.5, legend=False)
                     
-                    # DYNAMIC TIGHT CROPPING (With 25% safety margin to prevent overlap)
                     minx, miny, maxx, maxy = highlighted_talukas.total_bounds
                     margin_x = max((maxx - minx) * 0.25, 0.05)
                     margin_y = max((maxy - miny) * 0.25, 0.05)
@@ -376,14 +408,11 @@ with tab3:
                                 path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                             )
                             
-                    # --- NEW: PLOT GPS POINTS ---
-                    if uploaded_file_t:
-                        df_t = pd.read_csv(uploaded_file_t)
-                        if 'Latitude' in df_t.columns and 'Longitude' in df_t.columns:
-                            df_points_t = df_t.dropna(subset=['Latitude', 'Longitude'])
-                            ax_main_t.scatter(df_points_t['Longitude'], df_points_t['Latitude'], 
-                                            color=point_color_t, edgecolor='black', 
-                                            s=45, zorder=5, linewidth=0.8)
+                    # --- NEW: PLOT GPS POINTS (USING .values TO PREVENT CRASHES) ---
+                    if df_points_t is not None:
+                        ax_main_t.scatter(df_points_t['Longitude'].values, df_points_t['Latitude'].values, 
+                                        color=point_color_t, edgecolor='black', 
+                                        s=45, zorder=5, linewidth=0.8)
                         
                     ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
                     ax_compass_t.set_axis_off()
