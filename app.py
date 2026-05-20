@@ -138,7 +138,7 @@ with tab1:
 # ==========================================
 with tab2:
     st.header("Static Region Highlight Map (Academic Standard)")
-    st.markdown("Generate a zoomed-in A4 landscape map with a professional compass rose and inset.")
+    st.markdown("Generate a zoomed-in A4 landscape map with an adjustable compass rose and inset.")
     
     district_geojson_path = "data/gujarat.geojson"
     
@@ -174,8 +174,28 @@ with tab2:
                 st.subheader("2. Map Styling")
                 plate_title = st.text_area("Plate Title / Caption", value="Plate 3.1: Map showing the districts of middle Gujarat surveyed for the collection of pink bollworm, P. gossypiella", height=100)
                 color_map_choice = st.selectbox("Highlight Palette", ["None (White)", "Pastel1", "Set3", "Accent", "tab20c"])
+
+                st.subheader("3. Element Placement")
+                st.markdown("Adjust these to prevent the inset or compass from overlapping your selected districts.")
+                inset_pos = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0)
+                compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0)
                 
             with col4:
+                # Coordinate dictionaries mapping user choice to [left, bottom, width, height]
+                inset_coords = {
+                    "Top Left": [0.05, 0.65, 0.25, 0.25],
+                    "Top Right": [0.70, 0.65, 0.25, 0.25],
+                    "Bottom Left": [0.05, 0.15, 0.25, 0.25],
+                    "Bottom Right": [0.70, 0.15, 0.25, 0.25]
+                }
+                
+                compass_coords = {
+                    "Top Right": [0.85, 0.75, 0.1, 0.1],
+                    "Top Left": [0.05, 0.75, 0.1, 0.1],
+                    "Bottom Right": [0.85, 0.15, 0.1, 0.1],
+                    "Bottom Left": [0.05, 0.15, 0.1, 0.1]
+                }
+
                 # Create the main figure strictly sized to A4 Landscape (11.69 x 8.27 inches)
                 fig, ax_main = plt.subplots(figsize=(11.69, 8.27), dpi=300)
                 
@@ -210,9 +230,8 @@ with tab2:
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
-                    # 2. ACADEMIC COMPASS ROSE (Independent Axis Placement)
-                    # Create a dedicated axis for the compass, perfectly positioned in the top right corner white space
-                    ax_compass = fig.add_axes([0.85, 0.75, 0.1, 0.1])
+                    # 2. ACADEMIC COMPASS ROSE (Dynamic Placement)
+                    ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
                     ax_compass.set_aspect('equal')
                     
@@ -238,12 +257,11 @@ with tab2:
                     ax_compass.text(1.25, 0, 'E', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
                     ax_compass.text(-1.25, 0, 'W', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
                     
-                    # Keep the compass tight to its box
                     ax_compass.set_xlim(-1.5, 1.5)
                     ax_compass.set_ylim(-1.5, 1.5)
 
-                    # 3. INSET MAP: Add the small map in the top left
-                    ax_inset = fig.add_axes([0.05, 0.65, 0.28, 0.28]) 
+                    # 3. INSET MAP: (Dynamic Placement)
+                    ax_inset = fig.add_axes(inset_coords[inset_pos]) 
                     
                     # Plot whole state in white
                     gdf.plot(ax=ax_inset, color='white', edgecolor='gray', linewidth=0.5)
