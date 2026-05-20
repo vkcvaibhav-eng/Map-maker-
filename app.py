@@ -156,11 +156,16 @@ with tab2:
         if not district_col:
             st.error(f"Could not automatically detect the district name column in your GeoJSON. Available columns: {list(gdf.columns)}")
         else:
+            # SANITIZE DATA TO PREVENT STREAMLIT CRASHES
+            gdf[district_col] = gdf[district_col].astype(str).str.strip()
+            
             col3, col4 = st.columns([1, 3])
             
             with col3:
                 st.subheader("1. Select Surveyed Regions")
-                all_districts = sorted(gdf[district_col].dropna().unique().tolist())
+                
+                # Get perfectly clean, unique list of districts
+                all_districts = sorted(list(set([d for d in gdf[district_col].dropna().tolist() if d != "nan"])))
                 
                 ideal_defaults = ["ahmedabad", "anand", "vadodara", "kheda", "panchmahal", "panch mahal", "dahod", "mahisagar", "chhotaudepur", "botad"]
                 safe_defaults = [d for d in all_districts if str(d).lower().strip() in ideal_defaults]
@@ -188,16 +193,12 @@ with tab2:
                 
             with col4:
                 inset_coords = {
-                    "Top Left": [0.05, 0.55, 0.25, 0.25],
-                    "Top Right": [0.70, 0.55, 0.25, 0.25],
-                    "Bottom Left": [0.05, 0.05, 0.25, 0.25],
-                    "Bottom Right": [0.70, 0.05, 0.25, 0.25]
+                    "Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25],
+                    "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]
                 }
                 compass_coords = {
-                    "Top Right": [0.85, 0.70, 0.1, 0.1],
-                    "Top Left": [0.05, 0.70, 0.1, 0.1],
-                    "Bottom Right": [0.85, 0.05, 0.1, 0.1],
-                    "Bottom Left": [0.05, 0.05, 0.1, 0.1]
+                    "Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1],
+                    "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]
                 }
 
                 fig, ax_main = plt.subplots(figsize=(11.69, 8.27), dpi=300)
@@ -279,8 +280,9 @@ with tab2:
                     key="btn_dist"
                 )
 
+
 # ==========================================
-# TAB 3: STATIC TALUKA MAP (NEW - A4 ACADEMIC FORMAT)
+# TAB 3: STATIC TALUKA MAP (A4 ACADEMIC FORMAT)
 # ==========================================
 with tab3:
     st.header("Static Taluka Highlight Map")
@@ -294,21 +296,34 @@ with tab3:
     else:
         gdf_talukas = gpd.read_file(taluka_geojson_path)
         
-        # Detect the Taluka column name safely
+        # HEAVILY EXPANDED TALUKA COLUMN DETECTION
         taluka_col = None
-        for col in ['NAME_3', 'taluka', 'Taluka_Name', 'taluka_name', 'TALUKA', 'Sub_Distri', 'subdistrict', 'Taluka']:
+        possible_t_cols = [
+            'NAME_3', 'taluka', 'Taluka_Name', 'taluka_name', 'TALUKA', 
+            'Sub_Distri', 'subdistrict', 'Taluka', 'subdistrict_name', 
+            'sdtname', 'tehsil_name', 'Tehsil', 'tehsil', 'sdt_name',
+            'NAME_2' # Included just in case the file is mislabeled
+        ]
+        
+        for col in possible_t_cols:
             if col in gdf_talukas.columns:
                 taluka_col = col
                 break
                 
         if not taluka_col:
-            st.error(f"Could not automatically detect the taluka name column in your GeoJSON. Available columns: {list(gdf_talukas.columns)}")
+            st.error(f"Could not automatically detect the taluka name column in your GeoJSON. Available columns in your file are: {list(gdf_talukas.columns)}")
         else:
+            # SANITIZE DATA TO PREVENT STREAMLIT CRASHES
+            # This forces all messy mixed data into perfectly clean strings 
+            gdf_talukas[taluka_col] = gdf_talukas[taluka_col].astype(str).str.strip()
+            
             col5, col6 = st.columns([1, 3])
             
             with col5:
                 st.subheader("1. Select Surveyed Regions")
-                all_talukas = sorted(gdf_talukas[taluka_col].dropna().unique().tolist())
+                
+                # Get perfectly clean, unique list of talukas
+                all_talukas = sorted(list(set([t for t in gdf_talukas[taluka_col].dropna().tolist() if t != "nan"])))
                 
                 selected_talukas = st.multiselect(
                     "Select talukas to highlight:",
@@ -349,4 +364,82 @@ with tab3:
                     if color_map_choice_taluka == "None (White)":
                         highlighted_talukas.plot(ax=ax_main_t, color='white', edgecolor='black', linewidth=1.5)
                     else:
-                        highlighted
+                        highlighted_talukas.plot(
+                            ax=ax_main_t, column=taluka_col, cmap=color_map_choice_taluka, 
+                            edgecolor='black', linewidth=1.5, legend=False
+                        )
+                    
+                    import matplotlib.patheffects as pe
+                    for idx, row in highlighted_talukas.iterrows():
+                        # Protect against empty geometries failing centroid calculation
+                        if row.geometry is not None and not row.geometry.is_empty:
+                            centroid = row.geometry.centroid
+                            ax_main_t.annotate(
+                                text=row[taluka_col], xy=(centroid.x, centroid.y),
+                                horizontalalignment='center', verticalalignment='center',
+                                fontsize=10, fontweight='bold', color='black',
+                                path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
+                            )
+                        
+                    # COMPASS ROSE
+                    ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
+                    ax_compass_t.set_axis_off()
+                    ax_compass_t.set_aspect('equal')
+                    w = 0.15 
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [0, 1], [w, 0]], facecolor='black', edgecolor='black', lw=0.5))
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [0, 1], [-w, 0]], facecolor='white', edgecolor='black', lw=0.5))
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [0, -1], [w, 0]], facecolor='white', edgecolor='black', lw=0.5))
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [0, -1], [-w, 0]], facecolor='black', edgecolor='black', lw=0.5))
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [1, 0], [0, w]], facecolor='black', edgecolor='black', lw=0.5))
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [1, 0], [0, -w]], facecolor='white', edgecolor='black', lw=0.5))
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, w]], facecolor='white', edgecolor='black', lw=0.5))
+                    ax_compass_t.add_patch(patches.Polygon([[0, 0], [-1, 0], [0, -w]], facecolor='black', edgecolor='black', lw=0.5))
+                    font_props = {'family': 'serif', 'fontweight': 'bold', 'fontsize': 14}
+                    ax_compass_t.text(0, 1.25, 'N', ha='center', va='center', **font_props)
+                    ax_compass_t.text(0, -1.25, 'S', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                    ax_compass_t.text(1.25, 0, 'E', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                    ax_compass_t.text(-1.25, 0, 'W', ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                    ax_compass_t.set_xlim(-1.5, 1.5)
+                    ax_compass_t.set_ylim(-1.5, 1.5)
+
+                    # INSET MAP (Loads State Boundary to give proper context for Talukas)
+                    ax_inset_t = fig_t.add_axes(inset_coords_t[inset_pos_t]) 
+                    if os.path.exists(state_geojson_path):
+                        gdf_state = gpd.read_file(state_geojson_path)
+                        gdf_state.plot(ax=ax_inset_t, color='white', edgecolor='gray', linewidth=0.5)
+                    else:
+                        gdf_talukas.plot(ax=ax_inset_t, color='white', edgecolor='gray', linewidth=0.1) # Fallback
+
+                    if color_map_choice_taluka == "None (White)":
+                        highlighted_talukas.plot(ax=ax_inset_t, color='#d3d3d3', edgecolor='black', linewidth=0.8)
+                    else:
+                        highlighted_talukas.plot(ax=ax_inset_t, color='#ff66b2', edgecolor='black', linewidth=0.8)
+                        
+                    ax_inset_t.set_xticks([])
+                    ax_inset_t.set_yticks([])
+                    ax_inset_t.set_title("Gujarat State", fontsize=11, fontweight='bold', pad=4)
+                    for spine in ax_inset_t.spines.values():
+                        spine.set_edgecolor('black')
+                        spine.set_linewidth(1)
+                    
+                else:
+                    gdf_talukas.plot(ax=ax_main_t, color='white', edgecolor='black', linewidth=0.3)
+                    ax_main_t.text(0.5, 0.5, "Select talukas to render map.", 
+                                 horizontalalignment='center', verticalalignment='center', 
+                                 transform=ax_main_t.transAxes, fontsize=14, color='gray')
+
+                ax_main_t.set_xticks([])
+                ax_main_t.set_yticks([])
+                ax_main_t.set_frame_on(False)
+                st.pyplot(fig_t)
+                
+                buf_t = io.BytesIO()
+                fig_t.savefig(buf_t, format="png", dpi=300)
+                buf_t.seek(0)
+                st.download_button(
+                    label="Download Taluka Map (PNG)",
+                    data=buf_t,
+                    file_name="academic_survey_taluka_map.png",
+                    mime="image/png",
+                    key="btn_taluka"
+                )
