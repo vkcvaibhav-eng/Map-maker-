@@ -146,8 +146,10 @@ with tab2:
     else:
         gdf = gpd.read_file(district_geojson_path)
         
+# Ensure we have a column that uniquely identifies districts
         district_col = None
-        for col in ['dtname', 'NAME_2', 'district', 'Dist_Name']:
+        # Added 'district_name' and 'REGNAME' to match your specific GeoJSON file
+        for col in ['dtname', 'NAME_2', 'district', 'Dist_Name', 'district_name', 'REGNAME']:
             if col in gdf.columns:
                 district_col = col
                 break
