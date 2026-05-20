@@ -183,6 +183,12 @@ with tab2:
                 inset_pos = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
                 compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
                 
+                # --- NEW: SURVEY OVERLAY ---
+                st.subheader("4. Overlay Survey Points")
+                uploaded_file_d = st.file_uploader("Upload GPS CSV", type=["csv"], key="dist_csv")
+                if uploaded_file_d:
+                    point_color_d = st.color_picker("Choose Point Color", "#FF0000", key="dist_pt_color")
+
             with col4:
                 inset_coords = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
                 compass_coords = {"Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1], "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]}
@@ -220,6 +226,15 @@ with tab2:
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
+                    # --- NEW: PLOT GPS POINTS ---
+                    if uploaded_file_d:
+                        df_d = pd.read_csv(uploaded_file_d)
+                        if 'Latitude' in df_d.columns and 'Longitude' in df_d.columns:
+                            df_points = df_d.dropna(subset=['Latitude', 'Longitude'])
+                            ax_main.scatter(df_points['Longitude'], df_points['Latitude'], 
+                                            color=point_color_d, edgecolor='black', 
+                                            s=45, zorder=5, linewidth=0.8)
+                            
                     ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
                     ax_compass.set_aspect('equal')
@@ -317,6 +332,12 @@ with tab3:
                 inset_pos_t = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
                 compass_pos_t = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
                 
+                # --- NEW: SURVEY OVERLAY ---
+                st.subheader("4. Overlay Survey Points")
+                uploaded_file_t = st.file_uploader("Upload GPS CSV", type=["csv"], key="taluka_csv")
+                if uploaded_file_t:
+                    point_color_t = st.color_picker("Choose Point Color", "#FF0000", key="taluka_pt_color")
+
             with col6:
                 inset_coords_t = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
                 compass_coords_t = {"Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1], "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]}
@@ -354,6 +375,15 @@ with tab3:
                                 fontsize=font_size_t, fontweight='bold', color='black',
                                 path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                             )
+                            
+                    # --- NEW: PLOT GPS POINTS ---
+                    if uploaded_file_t:
+                        df_t = pd.read_csv(uploaded_file_t)
+                        if 'Latitude' in df_t.columns and 'Longitude' in df_t.columns:
+                            df_points_t = df_t.dropna(subset=['Latitude', 'Longitude'])
+                            ax_main_t.scatter(df_points_t['Longitude'], df_points_t['Latitude'], 
+                                            color=point_color_t, edgecolor='black', 
+                                            s=45, zorder=5, linewidth=0.8)
                         
                     ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
                     ax_compass_t.set_axis_off()
