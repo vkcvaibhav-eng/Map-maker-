@@ -481,7 +481,7 @@ with tab3:
                         name_col_t = next((c for c in loc['df'].columns if c.lower() in ['name', 'location', 'label', 'site']), None)
                         if name_col_t:
                             # Dynamic offset: Push text 40 points up if it's a Map Pin so it doesn't cover the marker
-                            y_offset_t = 40 if loc['style'] == "Map Pin" else 15
+                            y_offset_t = 30 if loc['style'] == "Map Pin" else 15
                             for _, r in loc['df'].iterrows():
                                 ax_main_t.annotate(str(r[name_col_t]), (r['Longitude'], r['Latitude']), 
                                                    xytext=(0, y_offset_t), textcoords='offset points', 
