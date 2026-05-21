@@ -46,13 +46,15 @@ marker_map = {
     "Star": "*"
 }
 
-# --- Create Sample CSV for Users to Download ---
-sample_df = pd.DataFrame({
-    'Latitude': [22.5333, 23.0225, 21.1702, 22.3039],
-    'Longitude': [72.9667, 72.5714, 72.8311, 70.8022],
-    'Name': ['Anand Agricultural University', 'Gujarat University', 'Navsari Agricultural University', 'Saurashtra University']
-})
-sample_csv_data = sample_df.to_csv(index=False).encode('utf-8')
+# --- Load User's Custom Sample CSV ---
+sample_csv_path = "1 - Copy.csv"
+if os.path.exists(sample_csv_path):
+    with open(sample_csv_path, "rb") as file:
+        sample_csv_data = file.read()
+else:
+    # Fallback just in case the file gets moved
+    sample_csv_data = b"Latitude,Longitude,Name\n"
+    st.sidebar.warning(f"⚠️ Could not find '{sample_csv_path}'. Please make sure it is saved in the same folder as this script to allow users to download it.")
 
 # --- Setup Tabs ---
 tab1, tab2, tab3 = st.tabs(["Interactive GPS Map", "Static District Map", "Static Taluka Map"])
@@ -256,11 +258,10 @@ with tab2:
                 st.subheader("5. Overlay Important Locations")
                 st.markdown("*(e.g. Universities, Research Stations, Sugar Factories)*")
                 
-                # ADDED SAMPLE DOWNLOAD BUTTON HERE
                 st.download_button(
                     label="📄 Download Sample Locations CSV",
                     data=sample_csv_data,
-                    file_name="sample_locations_template.csv",
+                    file_name="1 - Copy.csv",
                     mime="text/csv",
                     key="sample_csv_dist"
                 )
@@ -475,11 +476,10 @@ with tab3:
                 st.subheader("5. Overlay Important Locations")
                 st.markdown("*(e.g. Universities, Research Stations, Sugar Factories)*")
                 
-                # ADDED SAMPLE DOWNLOAD BUTTON HERE
                 st.download_button(
                     label="📄 Download Sample Locations CSV",
                     data=sample_csv_data,
-                    file_name="sample_locations_template.csv",
+                    file_name="1 - Copy.csv",
                     mime="text/csv",
                     key="sample_csv_taluka"
                 )
