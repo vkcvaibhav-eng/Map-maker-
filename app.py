@@ -269,8 +269,12 @@ with tab2:
                     highlighted_gdf.plot(ax=ax_main, column=district_col, cmap=color_map_choice, edgecolor='black', linewidth=1.5)
                 
                 minx, miny, maxx, maxy = highlighted_gdf.total_bounds
-                ax_main.set_xlim(minx - max((maxx - minx) * 0.25, 0.05), maxx + max((maxx - minx) * 0.25, 0.05))
-                ax_main.set_ylim(miny - max((maxy - miny) * 0.25, 0.05), maxy + max((maxy - miny) * 0.25, 0.05))
+                
+                # Increased margins significantly (0.35 instead of 0.25) to avoid overlapping map with compass/legend
+                margin_x = max((maxx - minx) * 0.35, 0.05)
+                margin_y = max((maxy - miny) * 0.35, 0.05)
+                ax_main.set_xlim(minx - margin_x, maxx + margin_x)
+                ax_main.set_ylim(miny - margin_y, maxy + margin_y)
                 
                 import matplotlib.patheffects as pe
                 for idx, row in highlighted_gdf.iterrows():
@@ -286,16 +290,26 @@ with tab2:
                 for loc in dist_loc_data:
                     size = 1200 if loc['style'] == "Map Pin" else 150
                     ax_main.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
+                    
                     if show_loc_labels_d:
                         name_col = next((c for c in loc['df'].columns if c.lower() in ['name', 'location', 'label', 'site']), None)
                         if name_col:
+                            # Dynamic offset: Push text 40 points up if it's a Map Pin so it doesn't cover the marker
+                            y_offset = 40 if loc['style'] == "Map Pin" else 15
                             for _, r in loc['df'].iterrows():
-                                ax_main.annotate(str(r[name_col]), (r['Longitude'], r['Latitude']), xytext=(0, 12), textcoords='offset points', ha='center', va='bottom', fontsize=max(font_size_d - 2, 8), fontweight='bold', path_effects=[pe.withStroke(linewidth=2.5, foreground="white")], zorder=7)
+                                ax_main.annotate(str(r[name_col]), (r['Longitude'], r['Latitude']), 
+                                                 xytext=(0, y_offset), textcoords='offset points', 
+                                                 ha='center', va='bottom', fontsize=max(font_size_d - 2, 8), fontweight='bold', 
+                                                 path_effects=[pe.withStroke(linewidth=2.5, foreground="white")], zorder=7)
                 
-                # LEGEND
+                # LEGEND WITH CLEAN ALIGNMENT AND SPACING
                 if legend_pos_d != "None":
                     handles, labels = ax_main.get_legend_handles_labels()
-                    if handles: ax_main.legend(handles, labels, loc=legend_pos_d, title="Legend", fontsize=10, title_fontsize=12, frameon=True, facecolor='white', framealpha=0.9, edgecolor='black', shadow=True)
+                    if handles: 
+                        ax_main.legend(handles, labels, loc=legend_pos_d, title="Legend", 
+                                       fontsize=10, title_fontsize=12, frameon=True, 
+                                       facecolor='white', framealpha=1.0, edgecolor='black', shadow=True,
+                                       borderpad=1.2, labelspacing=1.2, handletextpad=1.0) # Added spacing pads
 
                 # COMPASS & INSET MAP
                 ax_compass = fig.add_axes(compass_coords[compass_pos])
@@ -440,8 +454,12 @@ with tab3:
                     highlighted_talukas.plot(ax=ax_main_t, column=taluka_col, cmap=color_map_choice_taluka, edgecolor='black', linewidth=1.5)
                 
                 minx, miny, maxx, maxy = highlighted_talukas.total_bounds
-                ax_main_t.set_xlim(minx - max((maxx - minx) * 0.25, 0.05), maxx + max((maxx - minx) * 0.25, 0.05))
-                ax_main_t.set_ylim(miny - max((maxy - miny) * 0.25, 0.05), maxy + max((maxy - miny) * 0.25, 0.05))
+                
+                # Increased margins significantly (0.35 instead of 0.25) to avoid overlapping map with compass/legend
+                margin_x_t = max((maxx - minx) * 0.35, 0.05)
+                margin_y_t = max((maxy - miny) * 0.35, 0.05)
+                ax_main_t.set_xlim(minx - margin_x_t, maxx + margin_x_t)
+                ax_main_t.set_ylim(miny - margin_y_t, maxy + margin_y_t)
                 
                 import matplotlib.patheffects as pe
                 for idx, row in highlighted_talukas.iterrows():
@@ -458,16 +476,26 @@ with tab3:
                 for loc in taluka_loc_data:
                     size = 1200 if loc['style'] == "Map Pin" else 150
                     ax_main_t.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
+                    
                     if show_loc_labels_t:
                         name_col_t = next((c for c in loc['df'].columns if c.lower() in ['name', 'location', 'label', 'site']), None)
                         if name_col_t:
+                            # Dynamic offset: Push text 40 points up if it's a Map Pin so it doesn't cover the marker
+                            y_offset_t = 40 if loc['style'] == "Map Pin" else 15
                             for _, r in loc['df'].iterrows():
-                                ax_main_t.annotate(str(r[name_col_t]), (r['Longitude'], r['Latitude']), xytext=(0, 12), textcoords='offset points', ha='center', va='bottom', fontsize=max(font_size_t - 2, 8), fontweight='bold', path_effects=[pe.withStroke(linewidth=2.5, foreground="white")], zorder=7)
+                                ax_main_t.annotate(str(r[name_col_t]), (r['Longitude'], r['Latitude']), 
+                                                   xytext=(0, y_offset_t), textcoords='offset points', 
+                                                   ha='center', va='bottom', fontsize=max(font_size_t - 2, 8), fontweight='bold', 
+                                                   path_effects=[pe.withStroke(linewidth=2.5, foreground="white")], zorder=7)
                 
-                # LEGEND
+                # LEGEND WITH CLEAN ALIGNMENT AND SPACING
                 if legend_pos_t != "None":
                     handles, labels = ax_main_t.get_legend_handles_labels()
-                    if handles: ax_main_t.legend(handles, labels, loc=legend_pos_t, title="Legend", fontsize=10, title_fontsize=12, frameon=True, facecolor='white', framealpha=0.9, edgecolor='black', shadow=True)
+                    if handles: 
+                        ax_main_t.legend(handles, labels, loc=legend_pos_t, title="Legend", 
+                                         fontsize=10, title_fontsize=12, frameon=True, 
+                                         facecolor='white', framealpha=1.0, edgecolor='black', shadow=True,
+                                         borderpad=1.2, labelspacing=1.2, handletextpad=1.0) # Added spacing pads
 
                 # COMPASS & INSET MAP
                 ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
