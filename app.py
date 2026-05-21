@@ -46,6 +46,14 @@ marker_map = {
     "Star": "*"
 }
 
+# --- Create Sample CSV for Users to Download ---
+sample_df = pd.DataFrame({
+    'Latitude': [22.5333, 23.0225, 21.1702, 22.3039],
+    'Longitude': [72.9667, 72.5714, 72.8311, 70.8022],
+    'Name': ['Anand Agricultural University', 'Gujarat University', 'Navsari Agricultural University', 'Saurashtra University']
+})
+sample_csv_data = sample_df.to_csv(index=False).encode('utf-8')
+
 # --- Setup Tabs ---
 tab1, tab2, tab3 = st.tabs(["Interactive GPS Map", "Static District Map", "Static Taluka Map"])
 
@@ -247,6 +255,16 @@ with tab2:
                 # --- IMPORTANT LOCATIONS ---
                 st.subheader("5. Overlay Important Locations")
                 st.markdown("*(e.g. Universities, Research Stations, Sugar Factories)*")
+                
+                # ADDED SAMPLE DOWNLOAD BUTTON HERE
+                st.download_button(
+                    label="📄 Download Sample Locations CSV",
+                    data=sample_csv_data,
+                    file_name="sample_locations_template.csv",
+                    mime="text/csv",
+                    key="sample_csv_dist"
+                )
+                
                 uploaded_loc_d = st.file_uploader("Upload Locations CSV", type=["csv"], key="dist_loc_csv")
                 df_loc_points_d = None
                 
@@ -456,6 +474,16 @@ with tab3:
                 # --- IMPORTANT LOCATIONS ---
                 st.subheader("5. Overlay Important Locations")
                 st.markdown("*(e.g. Universities, Research Stations, Sugar Factories)*")
+                
+                # ADDED SAMPLE DOWNLOAD BUTTON HERE
+                st.download_button(
+                    label="📄 Download Sample Locations CSV",
+                    data=sample_csv_data,
+                    file_name="sample_locations_template.csv",
+                    mime="text/csv",
+                    key="sample_csv_taluka"
+                )
+                
                 uploaded_loc_t = st.file_uploader("Upload Locations CSV", type=["csv"], key="taluka_loc_csv")
                 df_loc_points_t = None
                 
