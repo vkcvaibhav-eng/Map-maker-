@@ -228,31 +228,60 @@ with tab2:
                     orientation_d = st.selectbox("Page Orientation", ["Landscape (A4)", "Portrait (A4)"], key="dist_ori")
 
                 st.subheader("3. Element Placement")
-                inset_pos = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
-                compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
+                col_el1, col_el2 = st.columns(2)
+                with col_el1:
+                    inset_pos = st.selectbox("Inset Map", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
+                with col_el2:
+                    compass_pos = st.selectbox("Compass", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
+                legend_pos_d = st.selectbox("Legend Position", ["None", "upper right", "upper left", "lower right", "lower left", "center left", "center right"], index=1, key="dist_legend")
                 
-                # --- SURVEY POINTS ---
-                st.subheader("4. Overlay Survey Points")
-                uploaded_file_d = st.file_uploader("Upload Survey GPS CSV", type=["csv"], key="dist_csv")
-                df_points_d = None
+                # --- SURVEY POINTS LAYER 1 ---
+                st.subheader("4. Survey Points (Layer 1)")
+                df_points_d1 = None
                 
-                if uploaded_file_d:
-                    col_pt1, col_pt2 = st.columns(2)
-                    with col_pt1:
-                        point_color_d = st.color_picker("Survey Color", "#FF0000", key="dist_pt_color")
-                    with col_pt2:
-                        point_style_d = st.selectbox("Survey Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key="dist_pt_style")
-                    
-                    df_d = pd.read_csv(uploaded_file_d)
-                    df_d.columns = df_d.columns.str.strip()
-                    df_d = df_d.loc[:, ~df_d.columns.duplicated()]
-                    
-                    if 'Latitude' not in df_d.columns or 'Longitude' not in df_d.columns:
-                        st.error("⚠️ Your CSV is missing 'Latitude' and 'Longitude' headers.")
+                col_pt1_d1, col_pt2_d1, col_pt3_d1 = st.columns(3)
+                with col_pt1_d1:
+                    pt_lbl_d1 = st.text_input("Legend Name", "Survey 1", key="dl1_lbl")
+                with col_pt2_d1:
+                    point_color_d1 = st.color_picker("Color", "#FF0000", key="dist_pt_color1")
+                with col_pt3_d1:
+                    point_style_d1 = st.selectbox("Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key="dist_pt_style1")
+                
+                uploaded_file_d1 = st.file_uploader("Upload Layer 1 CSV", type=["csv"], key="dist_csv1")
+                if uploaded_file_d1:
+                    df_d1 = pd.read_csv(uploaded_file_d1)
+                    df_d1.columns = df_d1.columns.str.strip()
+                    df_d1 = df_d1.loc[:, ~df_d1.columns.duplicated()]
+                    if 'Latitude' in df_d1.columns and 'Longitude' in df_d1.columns:
+                        df_d1['Latitude'] = pd.to_numeric(df_d1['Latitude'], errors='coerce')
+                        df_d1['Longitude'] = pd.to_numeric(df_d1['Longitude'], errors='coerce')
+                        df_points_d1 = df_d1.dropna(subset=['Latitude', 'Longitude'])
                     else:
-                        df_d['Latitude'] = pd.to_numeric(df_d['Latitude'], errors='coerce')
-                        df_d['Longitude'] = pd.to_numeric(df_d['Longitude'], errors='coerce')
-                        df_points_d = df_d.dropna(subset=['Latitude', 'Longitude'])
+                        st.error("⚠️ Layer 1 CSV is missing 'Latitude' and 'Longitude' headers.")
+
+                # --- SURVEY POINTS LAYER 2 ---
+                st.subheader("4.1 Survey Points (Layer 2)")
+                df_points_d2 = None
+                
+                col_pt1_d2, col_pt2_d2, col_pt3_d2 = st.columns(3)
+                with col_pt1_d2:
+                    pt_lbl_d2 = st.text_input("Legend Name", "Survey 2", key="dl2_lbl")
+                with col_pt2_d2:
+                    point_color_d2 = st.color_picker("Color", "#0000FF", key="dist_pt_color2")
+                with col_pt3_d2:
+                    point_style_d2 = st.selectbox("Shape", ["Square", "Circle", "Triangle", "Diamond", "Star"], key="dist_pt_style2")
+                
+                uploaded_file_d2 = st.file_uploader("Upload Layer 2 CSV", type=["csv"], key="dist_csv2")
+                if uploaded_file_d2:
+                    df_d2 = pd.read_csv(uploaded_file_d2)
+                    df_d2.columns = df_d2.columns.str.strip()
+                    df_d2 = df_d2.loc[:, ~df_d2.columns.duplicated()]
+                    if 'Latitude' in df_d2.columns and 'Longitude' in df_d2.columns:
+                        df_d2['Latitude'] = pd.to_numeric(df_d2['Latitude'], errors='coerce')
+                        df_d2['Longitude'] = pd.to_numeric(df_d2['Longitude'], errors='coerce')
+                        df_points_d2 = df_d2.dropna(subset=['Latitude', 'Longitude'])
+                    else:
+                        st.error("⚠️ Layer 2 CSV is missing 'Latitude' and 'Longitude' headers.")
 
                 # --- IMPORTANT LOCATIONS ---
                 st.subheader("5. Overlay Important Locations")
@@ -266,18 +295,20 @@ with tab2:
                     key="sample_csv_dist"
                 )
                 
-                uploaded_loc_d = st.file_uploader("Upload Locations CSV", type=["csv"], key="dist_loc_csv")
                 df_loc_points_d = None
                 
-                show_loc_labels_d = st.checkbox("Show Location Names", value=True, key="dist_loc_lbl")
+                col_loc1_d, col_loc2_d, col_loc3_d = st.columns(3)
+                with col_loc1_d:
+                    loc_lbl_d = st.text_input("Legend Name", "Locations", key="dloc_lbl")
+                with col_loc2_d:
+                    loc_color_d = st.color_picker("Color", "#FFFF00", key="dist_loc_color")
+                with col_loc3_d:
+                    loc_style_d = st.selectbox("Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key="dist_loc_style")
+                
+                show_loc_labels_d = st.checkbox("Show Location Names on Map", value=True, key="dist_loc_lbl")
+                uploaded_loc_d = st.file_uploader("Upload Locations CSV", type=["csv"], key="dist_loc_csv")
                 
                 if uploaded_loc_d:
-                    col_loc1, col_loc2 = st.columns(2)
-                    with col_loc1:
-                        loc_color_d = st.color_picker("Location Color", "#FFFF00", key="dist_loc_color")
-                    with col_loc2:
-                        loc_style_d = st.selectbox("Location Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key="dist_loc_style")
-                    
                     df_loc_d = pd.read_csv(uploaded_loc_d)
                     df_loc_d.columns = df_loc_d.columns.str.strip()
                     df_loc_d.loc[:, ~df_loc_d.columns.duplicated()]
@@ -324,17 +355,23 @@ with tab2:
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
-                    # PLOT GPS POINTS
-                    if df_points_d is not None:
-                        ax_main.scatter(df_points_d['Longitude'].values, df_points_d['Latitude'].values, 
-                                        color=point_color_d, edgecolor='black', marker=marker_map[point_style_d],
-                                        s=60, zorder=5, linewidth=0.8)
+                    # PLOT GPS POINTS LAYER 1
+                    if df_points_d1 is not None:
+                        ax_main.scatter(df_points_d1['Longitude'].values, df_points_d1['Latitude'].values, 
+                                        color=point_color_d1, edgecolor='black', marker=marker_map[point_style_d1],
+                                        s=60, zorder=5, linewidth=0.8, label=pt_lbl_d1)
+
+                    # PLOT GPS POINTS LAYER 2
+                    if df_points_d2 is not None:
+                        ax_main.scatter(df_points_d2['Longitude'].values, df_points_d2['Latitude'].values, 
+                                        color=point_color_d2, edgecolor='black', marker=marker_map[point_style_d2],
+                                        s=60, zorder=5, linewidth=0.8, label=pt_lbl_d2)
                     
                     # PLOT IMPORTANT LOCATIONS 
                     if df_loc_points_d is not None:
                         ax_main.scatter(df_loc_points_d['Longitude'].values, df_loc_points_d['Latitude'].values, 
                                         color=loc_color_d, edgecolor='black', marker=marker_map[loc_style_d],
-                                        s=250 if loc_style_d == "Map Pin" else 150, zorder=6, linewidth=1.2)
+                                        s=250 if loc_style_d == "Map Pin" else 150, zorder=6, linewidth=1.2, label=loc_lbl_d)
                         
                         # Annotate Location Names
                         if show_loc_labels_d:
@@ -351,6 +388,14 @@ with tab2:
                                     )
                             else:
                                 st.warning("⚠️ Could not find a 'Name', 'Location', or 'Label' column to print names on the map.")
+
+                    # ADD LEGEND
+                    if legend_pos_d != "None":
+                        handles, labels = ax_main.get_legend_handles_labels()
+                        if handles:
+                            ax_main.legend(handles, labels, loc=legend_pos_d, title="Legend", 
+                                           fontsize=10, title_fontsize=12, frameon=True, 
+                                           facecolor='white', framealpha=0.9, edgecolor='black', shadow=True)
                                 
                     ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
@@ -446,31 +491,60 @@ with tab3:
                     orientation_t = st.selectbox("Page Orientation", ["Landscape (A4)", "Portrait (A4)"], key="taluka_ori")
 
                 st.subheader("3. Element Placement")
-                inset_pos_t = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
-                compass_pos_t = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
+                col_el1_t, col_el2_t = st.columns(2)
+                with col_el1_t:
+                    inset_pos_t = st.selectbox("Inset Map", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
+                with col_el2_t:
+                    compass_pos_t = st.selectbox("Compass", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
+                legend_pos_t = st.selectbox("Legend Position", ["None", "upper right", "upper left", "lower right", "lower left", "center left", "center right"], index=1, key="taluka_legend")
                 
-                # --- SURVEY POINTS ---
-                st.subheader("4. Overlay Survey Points")
-                uploaded_file_t = st.file_uploader("Upload Survey GPS CSV", type=["csv"], key="taluka_csv")
-                df_points_t = None
+                # --- SURVEY POINTS LAYER 1 ---
+                st.subheader("4. Survey Points (Layer 1)")
+                df_points_t1 = None
                 
-                if uploaded_file_t:
-                    col_pt1_t, col_pt2_t = st.columns(2)
-                    with col_pt1_t:
-                        point_color_t = st.color_picker("Survey Color", "#FF0000", key="taluka_pt_color")
-                    with col_pt2_t:
-                        point_style_t = st.selectbox("Survey Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key="taluka_pt_style")
-                    
-                    df_t = pd.read_csv(uploaded_file_t)
-                    df_t.columns = df_t.columns.str.strip()
-                    df_t = df_t.loc[:, ~df_t.columns.duplicated()]
-                    
-                    if 'Latitude' not in df_t.columns or 'Longitude' not in df_t.columns:
-                        st.error("⚠️ Your CSV is missing 'Latitude' and 'Longitude' headers.")
+                col_pt1_t1, col_pt2_t1, col_pt3_t1 = st.columns(3)
+                with col_pt1_t1:
+                    pt_lbl_t1 = st.text_input("Legend Name", "Survey 1", key="tl1_lbl")
+                with col_pt2_t1:
+                    point_color_t1 = st.color_picker("Color", "#FF0000", key="taluka_pt_color1")
+                with col_pt3_t1:
+                    point_style_t1 = st.selectbox("Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key="taluka_pt_style1")
+                
+                uploaded_file_t1 = st.file_uploader("Upload Layer 1 CSV", type=["csv"], key="taluka_csv1")
+                if uploaded_file_t1:
+                    df_t1 = pd.read_csv(uploaded_file_t1)
+                    df_t1.columns = df_t1.columns.str.strip()
+                    df_t1 = df_t1.loc[:, ~df_t1.columns.duplicated()]
+                    if 'Latitude' in df_t1.columns and 'Longitude' in df_t1.columns:
+                        df_t1['Latitude'] = pd.to_numeric(df_t1['Latitude'], errors='coerce')
+                        df_t1['Longitude'] = pd.to_numeric(df_t1['Longitude'], errors='coerce')
+                        df_points_t1 = df_t1.dropna(subset=['Latitude', 'Longitude'])
                     else:
-                        df_t['Latitude'] = pd.to_numeric(df_t['Latitude'], errors='coerce')
-                        df_t['Longitude'] = pd.to_numeric(df_t['Longitude'], errors='coerce')
-                        df_points_t = df_t.dropna(subset=['Latitude', 'Longitude'])
+                        st.error("⚠️ Layer 1 CSV is missing 'Latitude' and 'Longitude' headers.")
+
+                # --- SURVEY POINTS LAYER 2 ---
+                st.subheader("4.1 Survey Points (Layer 2)")
+                df_points_t2 = None
+                
+                col_pt1_t2, col_pt2_t2, col_pt3_t2 = st.columns(3)
+                with col_pt1_t2:
+                    pt_lbl_t2 = st.text_input("Legend Name", "Survey 2", key="tl2_lbl")
+                with col_pt2_t2:
+                    point_color_t2 = st.color_picker("Color", "#0000FF", key="taluka_pt_color2")
+                with col_pt3_t2:
+                    point_style_t2 = st.selectbox("Shape", ["Square", "Circle", "Triangle", "Diamond", "Star"], key="taluka_pt_style2")
+                
+                uploaded_file_t2 = st.file_uploader("Upload Layer 2 CSV", type=["csv"], key="taluka_csv2")
+                if uploaded_file_t2:
+                    df_t2 = pd.read_csv(uploaded_file_t2)
+                    df_t2.columns = df_t2.columns.str.strip()
+                    df_t2 = df_t2.loc[:, ~df_t2.columns.duplicated()]
+                    if 'Latitude' in df_t2.columns and 'Longitude' in df_t2.columns:
+                        df_t2['Latitude'] = pd.to_numeric(df_t2['Latitude'], errors='coerce')
+                        df_t2['Longitude'] = pd.to_numeric(df_t2['Longitude'], errors='coerce')
+                        df_points_t2 = df_t2.dropna(subset=['Latitude', 'Longitude'])
+                    else:
+                        st.error("⚠️ Layer 2 CSV is missing 'Latitude' and 'Longitude' headers.")
 
                 # --- IMPORTANT LOCATIONS ---
                 st.subheader("5. Overlay Important Locations")
@@ -484,18 +558,20 @@ with tab3:
                     key="sample_csv_taluka"
                 )
                 
-                uploaded_loc_t = st.file_uploader("Upload Locations CSV", type=["csv"], key="taluka_loc_csv")
                 df_loc_points_t = None
                 
-                show_loc_labels_t = st.checkbox("Show Location Names", value=True, key="taluka_loc_lbl")
+                col_loc1_t, col_loc2_t, col_loc3_t = st.columns(3)
+                with col_loc1_t:
+                    loc_lbl_t = st.text_input("Legend Name", "Locations", key="tloc_lbl")
+                with col_loc2_t:
+                    loc_color_t = st.color_picker("Color", "#FFFF00", key="taluka_loc_color")
+                with col_loc3_t:
+                    loc_style_t = st.selectbox("Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key="taluka_loc_style")
+                
+                show_loc_labels_t = st.checkbox("Show Location Names on Map", value=True, key="taluka_loc_lbl")
+                uploaded_loc_t = st.file_uploader("Upload Locations CSV", type=["csv"], key="taluka_loc_csv")
                 
                 if uploaded_loc_t:
-                    col_loc1_t, col_loc2_t = st.columns(2)
-                    with col_loc1_t:
-                        loc_color_t = st.color_picker("Location Color", "#FFFF00", key="taluka_loc_color")
-                    with col_loc2_t:
-                        loc_style_t = st.selectbox("Location Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key="taluka_loc_style")
-                    
                     df_loc_t = pd.read_csv(uploaded_loc_t)
                     df_loc_t.columns = df_loc_t.columns.str.strip()
                     df_loc_t.loc[:, ~df_loc_t.columns.duplicated()]
@@ -543,17 +619,23 @@ with tab3:
                                 path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                             )
                             
-                    # PLOT GPS POINTS
-                    if df_points_t is not None:
-                        ax_main_t.scatter(df_points_t['Longitude'].values, df_points_t['Latitude'].values, 
-                                        color=point_color_t, edgecolor='black', marker=marker_map[point_style_t],
-                                        s=60, zorder=5, linewidth=0.8)
+                    # PLOT GPS POINTS LAYER 1
+                    if df_points_t1 is not None:
+                        ax_main_t.scatter(df_points_t1['Longitude'].values, df_points_t1['Latitude'].values, 
+                                        color=point_color_t1, edgecolor='black', marker=marker_map[point_style_t1],
+                                        s=60, zorder=5, linewidth=0.8, label=pt_lbl_t1)
                                         
+                    # PLOT GPS POINTS LAYER 2
+                    if df_points_t2 is not None:
+                        ax_main_t.scatter(df_points_t2['Longitude'].values, df_points_t2['Latitude'].values, 
+                                        color=point_color_t2, edgecolor='black', marker=marker_map[point_style_t2],
+                                        s=60, zorder=5, linewidth=0.8, label=pt_lbl_t2)
+
                     # PLOT IMPORTANT LOCATIONS
                     if df_loc_points_t is not None:
                         ax_main_t.scatter(df_loc_points_t['Longitude'].values, df_loc_points_t['Latitude'].values, 
                                         color=loc_color_t, edgecolor='black', marker=marker_map[loc_style_t],
-                                        s=250 if loc_style_t == "Map Pin" else 150, zorder=6, linewidth=1.2)
+                                        s=250 if loc_style_t == "Map Pin" else 150, zorder=6, linewidth=1.2, label=loc_lbl_t)
                         
                         # Annotate Location Names
                         if show_loc_labels_t:
@@ -570,7 +652,15 @@ with tab3:
                                     )
                             else:
                                 st.warning("⚠️ Could not find a 'Name', 'Location', or 'Label' column to print names on the map.")
-                                
+                    
+                    # ADD LEGEND
+                    if legend_pos_t != "None":
+                        handles, labels = ax_main_t.get_legend_handles_labels()
+                        if handles:
+                            ax_main_t.legend(handles, labels, loc=legend_pos_t, title="Legend", 
+                                             fontsize=10, title_fontsize=12, frameon=True, 
+                                             facecolor='white', framealpha=0.9, edgecolor='black', shadow=True)
+
                     ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
                     ax_compass_t.set_axis_off()
                     ax_compass_t.set_aspect('equal')
