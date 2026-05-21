@@ -5,6 +5,7 @@ import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import matplotlib.path as mpath
 import io
 import os
 
@@ -14,8 +15,30 @@ st.set_page_config(page_title="Ph.D. Survey Map Generator", layout="wide")
 st.title("Gujarat Survey Map Generator")
 st.markdown("Generate professional, publication-ready maps for your Ph.D. thesis.")
 
+# --- Custom Map Pin Path ---
+pin_verts = [
+    (0.0, -1.0),   # Bottom tip
+    (0.5, -0.3),   # Right bottom curve
+    (0.8, 0.4),    # Right top curve
+    (0.0, 1.0),    # Top center
+    (-0.8, 0.4),   # Left top curve
+    (-0.5, -0.3),  # Left bottom curve
+    (0.0, -1.0)    # Bottom tip
+]
+pin_codes = [
+    mpath.Path.MOVETO,
+    mpath.Path.CURVE4,
+    mpath.Path.CURVE4,
+    mpath.Path.CURVE4,
+    mpath.Path.CURVE4,
+    mpath.Path.CURVE4,
+    mpath.Path.CLOSEPOLY
+]
+custom_pin = mpath.Path(pin_verts, pin_codes)
+
 # Dictionary to map user-friendly shape names to Matplotlib markers
 marker_map = {
+    "Map Pin": custom_pin,
     "Circle": "o",
     "Square": "s",
     "Triangle": "^",
@@ -227,12 +250,14 @@ with tab2:
                 uploaded_loc_d = st.file_uploader("Upload Locations CSV", type=["csv"], key="dist_loc_csv")
                 df_loc_points_d = None
                 
+                show_loc_labels_d = st.checkbox("Show Location Names", value=True, key="dist_loc_lbl")
+                
                 if uploaded_loc_d:
                     col_loc1, col_loc2 = st.columns(2)
                     with col_loc1:
                         loc_color_d = st.color_picker("Location Color", "#FFFF00", key="dist_loc_color")
                     with col_loc2:
-                        loc_style_d = st.selectbox("Location Shape", ["Star", "Diamond", "Square", "Circle", "Triangle"], key="dist_loc_style")
+                        loc_style_d = st.selectbox("Location Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key="dist_loc_style")
                     
                     df_loc_d = pd.read_csv(uploaded_loc_d)
                     df_loc_d.columns = df_loc_d.columns.str.strip()
@@ -286,12 +311,28 @@ with tab2:
                                         color=point_color_d, edgecolor='black', marker=marker_map[point_style_d],
                                         s=60, zorder=5, linewidth=0.8)
                     
-                    # PLOT IMPORTANT LOCATIONS (Slightly larger, higher zorder so they stay on top)
+                    # PLOT IMPORTANT LOCATIONS 
                     if df_loc_points_d is not None:
                         ax_main.scatter(df_loc_points_d['Longitude'].values, df_loc_points_d['Latitude'].values, 
                                         color=loc_color_d, edgecolor='black', marker=marker_map[loc_style_d],
-                                        s=150, zorder=6, linewidth=1.2)
+                                        s=250 if loc_style_d == "Map Pin" else 150, zorder=6, linewidth=1.2)
                         
+                        # Annotate Location Names
+                        if show_loc_labels_d:
+                            name_col_d = next((col for col in df_loc_points_d.columns if col.lower() in ['name', 'location', 'label', 'site']), None)
+                            if name_col_d:
+                                for _, row in df_loc_points_d.iterrows():
+                                    ax_main.annotate(
+                                        str(row[name_col_d]),
+                                        (row['Longitude'], row['Latitude']),
+                                        xytext=(0, 12), textcoords='offset points',
+                                        ha='center', va='bottom', fontsize=max(font_size_d - 2, 8), fontweight='bold', color='black',
+                                        path_effects=[pe.withStroke(linewidth=2.5, foreground="white")],
+                                        zorder=7
+                                    )
+                            else:
+                                st.warning("⚠️ Could not find a 'Name', 'Location', or 'Label' column to print names on the map.")
+                                
                     ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
                     ax_compass.set_aspect('equal')
@@ -418,12 +459,14 @@ with tab3:
                 uploaded_loc_t = st.file_uploader("Upload Locations CSV", type=["csv"], key="taluka_loc_csv")
                 df_loc_points_t = None
                 
+                show_loc_labels_t = st.checkbox("Show Location Names", value=True, key="taluka_loc_lbl")
+                
                 if uploaded_loc_t:
                     col_loc1_t, col_loc2_t = st.columns(2)
                     with col_loc1_t:
                         loc_color_t = st.color_picker("Location Color", "#FFFF00", key="taluka_loc_color")
                     with col_loc2_t:
-                        loc_style_t = st.selectbox("Location Shape", ["Star", "Diamond", "Square", "Circle", "Triangle"], key="taluka_loc_style")
+                        loc_style_t = st.selectbox("Location Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key="taluka_loc_style")
                     
                     df_loc_t = pd.read_csv(uploaded_loc_t)
                     df_loc_t.columns = df_loc_t.columns.str.strip()
@@ -482,8 +525,24 @@ with tab3:
                     if df_loc_points_t is not None:
                         ax_main_t.scatter(df_loc_points_t['Longitude'].values, df_loc_points_t['Latitude'].values, 
                                         color=loc_color_t, edgecolor='black', marker=marker_map[loc_style_t],
-                                        s=150, zorder=6, linewidth=1.2)
+                                        s=250 if loc_style_t == "Map Pin" else 150, zorder=6, linewidth=1.2)
                         
+                        # Annotate Location Names
+                        if show_loc_labels_t:
+                            name_col_t = next((col for col in df_loc_points_t.columns if col.lower() in ['name', 'location', 'label', 'site']), None)
+                            if name_col_t:
+                                for _, row in df_loc_points_t.iterrows():
+                                    ax_main_t.annotate(
+                                        str(row[name_col_t]),
+                                        (row['Longitude'], row['Latitude']),
+                                        xytext=(0, 12), textcoords='offset points',
+                                        ha='center', va='bottom', fontsize=max(font_size_t - 2, 8), fontweight='bold', color='black',
+                                        path_effects=[pe.withStroke(linewidth=2.5, foreground="white")],
+                                        zorder=7
+                                    )
+                            else:
+                                st.warning("⚠️ Could not find a 'Name', 'Location', or 'Label' column to print names on the map.")
+                                
                     ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
                     ax_compass_t.set_axis_off()
                     ax_compass_t.set_aspect('equal')
