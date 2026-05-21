@@ -6,6 +6,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.path as mpath
+import numpy as np
 import io
 import os
 
@@ -15,21 +16,40 @@ st.set_page_config(page_title="Ph.D. Survey Map Generator", layout="wide")
 st.title("Gujarat Survey Map Generator")
 st.markdown("Generate professional, publication-ready maps for your Ph.D. thesis.")
 
-# --- Custom Map Pin Path ---
-pin_verts = [
-    (0.0, -1.0),   # Bottom tip
-    (0.5, -0.3),   # Right bottom curve
-    (0.8, 0.4),    # Right top curve
-    (0.0, 1.0),    # Top center
-    (-0.8, 0.4),   # Left top curve
-    (-0.5, -0.3),  # Left bottom curve
-    (0.0, -1.0)    # Bottom tip
-]
-pin_codes = [
-    mpath.Path.MOVETO, mpath.Path.CURVE4, mpath.Path.CURVE4,
-    mpath.Path.CURVE4, mpath.Path.CURVE4, mpath.Path.CURVE4,
-    mpath.Path.CLOSEPOLY
-]
+# --- Custom Map Pin Path (High-Resolution Geometric Teardrop) ---
+# Mathematically calculated for an ultra-smooth curve
+D = 2.5  # Distance from circle center to bottom tip
+R = 1.0  # Radius of the top circular part
+theta_tangent = np.arcsin(R / D)
+
+# 1. Outer shell (Sweeps perfectly over the top from left tangent to right tangent)
+angles = np.linspace(np.pi + theta_tangent, -theta_tangent, 100)
+x_outer = R * np.cos(angles)
+y_outer = R * np.sin(angles) + 2.5  # Center is shifted up so tip rests at (0,0)
+
+# Connect back to the sharp bottom tip at (0, 0)
+x_outer = np.concatenate([x_outer, [0.0], [x_outer[0]]])
+y_outer = np.concatenate([y_outer, [0.0], [y_outer[0]]])
+
+# 2. Inner circular hole (Drawn backwards to create a cutout punch)
+r_inner = 0.4
+angles_inner = np.linspace(0, 2 * np.pi, 100)
+x_inner = r_inner * np.cos(angles_inner)
+y_inner = r_inner * np.sin(angles_inner) + 2.5
+
+verts_outer = np.column_stack((x_outer, y_outer))
+verts_inner = np.column_stack((x_inner, y_inner))
+
+# 3. Invisible dummy point to perfectly balance the bounding box 
+# This ensures Matplotlib aligns the tip of the pin EXACTLY on the GPS coordinate
+verts_dummy = np.array([[0.0, -3.5]])
+
+pin_verts = np.vstack((verts_outer, verts_inner, verts_dummy))
+pin_codes = np.full(len(pin_verts), mpath.Path.LINETO)
+pin_codes[0] = mpath.Path.MOVETO
+pin_codes[len(verts_outer)] = mpath.Path.MOVETO
+pin_codes[-1] = mpath.Path.MOVETO  # Dummy point doesn't draw a line
+
 custom_pin = mpath.Path(pin_verts, pin_codes)
 
 # Dictionary to map user-friendly shape names to Matplotlib markers
@@ -124,12 +144,7 @@ with tab1:
                     if color_col != "None (All Red)" and pd.notna(row[color_col]):
                         tooltip_text += f"<br><b>{color_col}:</b> {row[color_col]}"
                     marker_color = color_map.get(row[color_col], "gray") if color_col != "None (All Red)" and pd.notna(row[color_col]) else "red"
-                    folium.Marker(
-                        location=[row['Latitude'], row['Longitude']],
-                        icon=folium.Icon(color=marker_color, icon="info-sign"), # Built-in teardrop pin
-                        tooltip=tooltip_text,
-                        popup=loc_name
-                    ).add_to(m)
+                    folium.CircleMarker(location=[row['Latitude'], row['Longitude']], radius=6, color=marker_color, fill=True, fill_color=marker_color, fill_opacity=0.8, tooltip=tooltip_text, popup=loc_name).add_to(m)
                 st.success(f"Displaying {len(filtered_df)} out of {len(df)} sample points.")
             else:
                 st.error("⚠️ Your CSV file must contain exactly 'Latitude' and 'Longitude'.")
@@ -153,7 +168,7 @@ with tab2:
         district_col = next((col for col in ['dtname', 'NAME_2', 'district', 'Dist_Name', 'district_name', 'REGNAME'] if col in gdf.columns), None)
         gdf[district_col] = gdf[district_col].astype(str).str.strip()
             
-        col3, col4 = st.columns([1.2, 2.8]) # Adjusted column ratio for dynamic UI
+        col3, col4 = st.columns([1.2, 2.8])
         
         with col3:
             st.subheader("1. Select Surveyed Regions")
@@ -176,7 +191,7 @@ with tab2:
             # --- DYNAMIC SURVEY POINTS ---
             st.markdown("---")
             st.subheader("4. Survey Points")
-            dist_survey_data = [] # Store valid configurations here to plot later
+            dist_survey_data = []
             
             for layer_id in st.session_state.dist_survey_layers:
                 with st.container(border=True):
@@ -189,7 +204,7 @@ with tab2:
                     pt_lbl = st.text_input("Legend Name", f"Survey {layer_id}", key=f"dl_lbl_{layer_id}")
                     col_pt1, col_pt2 = st.columns(2)
                     pt_color = col_pt1.color_picker("Color", "#FF0000" if layer_id%2!=0 else "#0000FF", key=f"dl_col_{layer_id}")
-                    pt_style = col_pt2.selectbox("Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key=f"dl_sty_{layer_id}")
+                    pt_style = col_pt2.selectbox("Shape", ["Circle", "Map Pin", "Square", "Triangle", "Diamond", "Star"], key=f"dl_sty_{layer_id}")
                     
                     uploaded_file = st.file_uploader("Upload CSV", type=["csv"], key=f"dl_csv_{layer_id}")
                     if uploaded_file:
@@ -264,11 +279,13 @@ with tab2:
                     
                 # DYNAMIC PLOT: SURVEY POINTS
                 for pt in dist_survey_data:
-                    ax_main.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=60, zorder=5, linewidth=0.8, label=pt['label'])
+                    size = 800 if pt['style'] == "Map Pin" else 60
+                    ax_main.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label=pt['label'])
                 
                 # DYNAMIC PLOT: LOCATIONS
                 for loc in dist_loc_data:
-                    ax_main.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=250 if loc['style'] == "Map Pin" else 150, zorder=6, linewidth=1.2, label=loc['label'])
+                    size = 1200 if loc['style'] == "Map Pin" else 150
+                    ax_main.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
                     if show_loc_labels_d:
                         name_col = next((c for c in loc['df'].columns if c.lower() in ['name', 'location', 'label', 'site']), None)
                         if name_col:
@@ -280,7 +297,7 @@ with tab2:
                     handles, labels = ax_main.get_legend_handles_labels()
                     if handles: ax_main.legend(handles, labels, loc=legend_pos_d, title="Legend", fontsize=10, title_fontsize=12, frameon=True, facecolor='white', framealpha=0.9, edgecolor='black', shadow=True)
 
-                # COMPASS & INSET MAP (Standard logic)
+                # COMPASS & INSET MAP
                 ax_compass = fig.add_axes(compass_coords[compass_pos])
                 ax_compass.set_axis_off(); ax_compass.set_aspect('equal')
                 w = 0.15 
@@ -358,7 +375,7 @@ with tab3:
                     pt_lbl_t = st.text_input("Legend Name", f"Survey {layer_id}", key=f"tl_lbl_{layer_id}")
                     col_pt1_t, col_pt2_t = st.columns(2)
                     pt_color_t = col_pt1_t.color_picker("Color", "#FF0000" if layer_id%2!=0 else "#0000FF", key=f"tl_col_{layer_id}")
-                    pt_style_t = col_pt2_t.selectbox("Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key=f"tl_sty_{layer_id}")
+                    pt_style_t = col_pt2_t.selectbox("Shape", ["Circle", "Map Pin", "Square", "Triangle", "Diamond", "Star"], key=f"tl_sty_{layer_id}")
                     
                     uploaded_file_t = st.file_uploader("Upload CSV", type=["csv"], key=f"tl_csv_{layer_id}")
                     if uploaded_file_t:
@@ -434,11 +451,13 @@ with tab3:
                         
                 # DYNAMIC PLOT: SURVEY POINTS
                 for pt in taluka_survey_data:
-                    ax_main_t.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=60, zorder=5, linewidth=0.8, label=pt['label'])
+                    size = 800 if pt['style'] == "Map Pin" else 60
+                    ax_main_t.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label=pt['label'])
 
                 # DYNAMIC PLOT: LOCATIONS
                 for loc in taluka_loc_data:
-                    ax_main_t.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=250 if loc['style'] == "Map Pin" else 150, zorder=6, linewidth=1.2, label=loc['label'])
+                    size = 1200 if loc['style'] == "Map Pin" else 150
+                    ax_main_t.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
                     if show_loc_labels_t:
                         name_col_t = next((c for c in loc['df'].columns if c.lower() in ['name', 'location', 'label', 'site']), None)
                         if name_col_t:
