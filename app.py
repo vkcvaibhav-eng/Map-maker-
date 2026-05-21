@@ -124,7 +124,12 @@ with tab1:
                     if color_col != "None (All Red)" and pd.notna(row[color_col]):
                         tooltip_text += f"<br><b>{color_col}:</b> {row[color_col]}"
                     marker_color = color_map.get(row[color_col], "gray") if color_col != "None (All Red)" and pd.notna(row[color_col]) else "red"
-                    folium.CircleMarker(location=[row['Latitude'], row['Longitude']], radius=6, color=marker_color, fill=True, fill_color=marker_color, fill_opacity=0.8, tooltip=tooltip_text, popup=loc_name).add_to(m)
+                    folium.Marker(
+                        location=[row['Latitude'], row['Longitude']],
+                        icon=folium.Icon(color=marker_color, icon="info-sign"), # Built-in teardrop pin
+                        tooltip=tooltip_text,
+                        popup=loc_name
+                    ).add_to(m)
                 st.success(f"Displaying {len(filtered_df)} out of {len(df)} sample points.")
             else:
                 st.error("⚠️ Your CSV file must contain exactly 'Latitude' and 'Longitude'.")
