@@ -14,6 +14,15 @@ st.set_page_config(page_title="Ph.D. Survey Map Generator", layout="wide")
 st.title("Gujarat Survey Map Generator")
 st.markdown("Generate professional, publication-ready maps for your Ph.D. thesis.")
 
+# Dictionary to map user-friendly shape names to Matplotlib markers
+marker_map = {
+    "Circle": "o",
+    "Square": "s",
+    "Triangle": "^",
+    "Diamond": "D",
+    "Star": "*"
+}
+
 # --- Setup Tabs ---
 tab1, tab2, tab3 = st.tabs(["Interactive GPS Map", "Static District Map", "Static Taluka Map"])
 
@@ -66,7 +75,6 @@ with tab1:
                 st.warning(f"Boundary file not found: {file_path}. Please check your data folder.")
 
         if uploaded_file:
-            # Bulletproof CSV Loading
             df = pd.read_csv(uploaded_file)
             df.columns = df.columns.str.strip()
             df = df.loc[:, ~df.columns.duplicated()]
@@ -190,13 +198,17 @@ with tab2:
                 inset_pos = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
                 compass_pos = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
                 
-                # --- NEW: BULLETPROOF SURVEY OVERLAY ---
+                # --- SURVEY POINTS ---
                 st.subheader("4. Overlay Survey Points")
-                uploaded_file_d = st.file_uploader("Upload GPS CSV", type=["csv"], key="dist_csv")
+                uploaded_file_d = st.file_uploader("Upload Survey GPS CSV", type=["csv"], key="dist_csv")
                 df_points_d = None
                 
                 if uploaded_file_d:
-                    point_color_d = st.color_picker("Choose Point Color", "#FF0000", key="dist_pt_color")
+                    col_pt1, col_pt2 = st.columns(2)
+                    with col_pt1:
+                        point_color_d = st.color_picker("Survey Color", "#FF0000", key="dist_pt_color")
+                    with col_pt2:
+                        point_style_d = st.selectbox("Survey Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key="dist_pt_style")
                     
                     df_d = pd.read_csv(uploaded_file_d)
                     df_d.columns = df_d.columns.str.strip()
@@ -208,9 +220,30 @@ with tab2:
                         df_d['Latitude'] = pd.to_numeric(df_d['Latitude'], errors='coerce')
                         df_d['Longitude'] = pd.to_numeric(df_d['Longitude'], errors='coerce')
                         df_points_d = df_d.dropna(subset=['Latitude', 'Longitude'])
-                        if df_points_d.empty:
-                            st.warning("⚠️ No valid numeric coordinates found.")
-                            df_points_d = None
+
+                # --- IMPORTANT LOCATIONS ---
+                st.subheader("5. Overlay Important Locations")
+                st.markdown("*(e.g. Universities, Research Stations, Sugar Factories)*")
+                uploaded_loc_d = st.file_uploader("Upload Locations CSV", type=["csv"], key="dist_loc_csv")
+                df_loc_points_d = None
+                
+                if uploaded_loc_d:
+                    col_loc1, col_loc2 = st.columns(2)
+                    with col_loc1:
+                        loc_color_d = st.color_picker("Location Color", "#FFFF00", key="dist_loc_color")
+                    with col_loc2:
+                        loc_style_d = st.selectbox("Location Shape", ["Star", "Diamond", "Square", "Circle", "Triangle"], key="dist_loc_style")
+                    
+                    df_loc_d = pd.read_csv(uploaded_loc_d)
+                    df_loc_d.columns = df_loc_d.columns.str.strip()
+                    df_loc_d.loc[:, ~df_loc_d.columns.duplicated()]
+                    
+                    if 'Latitude' not in df_loc_d.columns or 'Longitude' not in df_loc_d.columns:
+                        st.error("⚠️ Your CSV is missing 'Latitude' and 'Longitude' headers.")
+                    else:
+                        df_loc_d['Latitude'] = pd.to_numeric(df_loc_d['Latitude'], errors='coerce')
+                        df_loc_d['Longitude'] = pd.to_numeric(df_loc_d['Longitude'], errors='coerce')
+                        df_loc_points_d = df_loc_d.dropna(subset=['Latitude', 'Longitude'])
 
             with col4:
                 inset_coords = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
@@ -247,11 +280,17 @@ with tab2:
                             path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                         )
                         
-                    # --- NEW: PLOT GPS POINTS (USING .values TO PREVENT CRASHES) ---
+                    # PLOT GPS POINTS
                     if df_points_d is not None:
                         ax_main.scatter(df_points_d['Longitude'].values, df_points_d['Latitude'].values, 
-                                        color=point_color_d, edgecolor='black', 
-                                        s=45, zorder=5, linewidth=0.8)
+                                        color=point_color_d, edgecolor='black', marker=marker_map[point_style_d],
+                                        s=60, zorder=5, linewidth=0.8)
+                    
+                    # PLOT IMPORTANT LOCATIONS (Slightly larger, higher zorder so they stay on top)
+                    if df_loc_points_d is not None:
+                        ax_main.scatter(df_loc_points_d['Longitude'].values, df_loc_points_d['Latitude'].values, 
+                                        color=loc_color_d, edgecolor='black', marker=marker_map[loc_style_d],
+                                        s=150, zorder=6, linewidth=1.2)
                         
                     ax_compass = fig.add_axes(compass_coords[compass_pos])
                     ax_compass.set_axis_off()
@@ -350,13 +389,17 @@ with tab3:
                 inset_pos_t = st.selectbox("Inset Map Position", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
                 compass_pos_t = st.selectbox("Compass Position", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
                 
-                # --- NEW: BULLETPROOF SURVEY OVERLAY ---
+                # --- SURVEY POINTS ---
                 st.subheader("4. Overlay Survey Points")
-                uploaded_file_t = st.file_uploader("Upload GPS CSV", type=["csv"], key="taluka_csv")
+                uploaded_file_t = st.file_uploader("Upload Survey GPS CSV", type=["csv"], key="taluka_csv")
                 df_points_t = None
                 
                 if uploaded_file_t:
-                    point_color_t = st.color_picker("Choose Point Color", "#FF0000", key="taluka_pt_color")
+                    col_pt1_t, col_pt2_t = st.columns(2)
+                    with col_pt1_t:
+                        point_color_t = st.color_picker("Survey Color", "#FF0000", key="taluka_pt_color")
+                    with col_pt2_t:
+                        point_style_t = st.selectbox("Survey Shape", ["Circle", "Square", "Triangle", "Diamond", "Star"], key="taluka_pt_style")
                     
                     df_t = pd.read_csv(uploaded_file_t)
                     df_t.columns = df_t.columns.str.strip()
@@ -368,9 +411,30 @@ with tab3:
                         df_t['Latitude'] = pd.to_numeric(df_t['Latitude'], errors='coerce')
                         df_t['Longitude'] = pd.to_numeric(df_t['Longitude'], errors='coerce')
                         df_points_t = df_t.dropna(subset=['Latitude', 'Longitude'])
-                        if df_points_t.empty:
-                            st.warning("⚠️ No valid numeric coordinates found.")
-                            df_points_t = None
+
+                # --- IMPORTANT LOCATIONS ---
+                st.subheader("5. Overlay Important Locations")
+                st.markdown("*(e.g. Universities, Research Stations, Sugar Factories)*")
+                uploaded_loc_t = st.file_uploader("Upload Locations CSV", type=["csv"], key="taluka_loc_csv")
+                df_loc_points_t = None
+                
+                if uploaded_loc_t:
+                    col_loc1_t, col_loc2_t = st.columns(2)
+                    with col_loc1_t:
+                        loc_color_t = st.color_picker("Location Color", "#FFFF00", key="taluka_loc_color")
+                    with col_loc2_t:
+                        loc_style_t = st.selectbox("Location Shape", ["Star", "Diamond", "Square", "Circle", "Triangle"], key="taluka_loc_style")
+                    
+                    df_loc_t = pd.read_csv(uploaded_loc_t)
+                    df_loc_t.columns = df_loc_t.columns.str.strip()
+                    df_loc_t.loc[:, ~df_loc_t.columns.duplicated()]
+                    
+                    if 'Latitude' not in df_loc_t.columns or 'Longitude' not in df_loc_t.columns:
+                        st.error("⚠️ Your CSV is missing 'Latitude' and 'Longitude' headers.")
+                    else:
+                        df_loc_t['Latitude'] = pd.to_numeric(df_loc_t['Latitude'], errors='coerce')
+                        df_loc_t['Longitude'] = pd.to_numeric(df_loc_t['Longitude'], errors='coerce')
+                        df_loc_points_t = df_loc_t.dropna(subset=['Latitude', 'Longitude'])
 
             with col6:
                 inset_coords_t = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
@@ -408,11 +472,17 @@ with tab3:
                                 path_effects=[pe.withStroke(linewidth=3, foreground="white")] 
                             )
                             
-                    # --- NEW: PLOT GPS POINTS (USING .values TO PREVENT CRASHES) ---
+                    # PLOT GPS POINTS
                     if df_points_t is not None:
                         ax_main_t.scatter(df_points_t['Longitude'].values, df_points_t['Latitude'].values, 
-                                        color=point_color_t, edgecolor='black', 
-                                        s=45, zorder=5, linewidth=0.8)
+                                        color=point_color_t, edgecolor='black', marker=marker_map[point_style_t],
+                                        s=60, zorder=5, linewidth=0.8)
+                                        
+                    # PLOT IMPORTANT LOCATIONS
+                    if df_loc_points_t is not None:
+                        ax_main_t.scatter(df_loc_points_t['Longitude'].values, df_loc_points_t['Latitude'].values, 
+                                        color=loc_color_t, edgecolor='black', marker=marker_map[loc_style_t],
+                                        s=150, zorder=6, linewidth=1.2)
                         
                     ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
                     ax_compass_t.set_axis_off()
