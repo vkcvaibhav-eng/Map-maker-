@@ -13,6 +13,22 @@ import os
 # --- Page Configuration ---
 st.set_page_config(page_title="Ph.D. Survey Map Generator", layout="wide")
 
+# --- Set Global Font to Times New Roman for Streamlit UI ---
+st.markdown("""
+    <style>
+    /* Apply Times New Roman to all text elements in the Streamlit app */
+    html, body, [class*="css"], [class*="st-"] {
+        font-family: "Times New Roman", Times, serif !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- Set Global Font to Times New Roman for Matplotlib Outputs ---
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman'] + plt.rcParams['font.serif']
+plt.rcParams['axes.titlesize'] = 14
+plt.rcParams['axes.labelsize'] = 12
+
 st.title("Gujarat Survey Map Generator")
 st.markdown("Generate professional, publication-ready maps for your Ph.D. thesis.")
 
@@ -140,9 +156,12 @@ with tab1:
 
                 for _, row in filtered_df.iterrows():
                     loc_name = row.get('Location', "Unknown Location")
-                    tooltip_text = f"<b>Location:</b> {loc_name}"
+                    # Applying Times New Roman in Folium HTML Popups
+                    tooltip_text = f"<div style='font-family: \"Times New Roman\", Times, serif;'><b>Location:</b> {loc_name}"
                     if color_col != "None (All Red)" and pd.notna(row[color_col]):
                         tooltip_text += f"<br><b>{color_col}:</b> {row[color_col]}"
+                    tooltip_text += "</div>"
+                    
                     marker_color = color_map.get(row[color_col], "gray") if color_col != "None (All Red)" and pd.notna(row[color_col]) else "red"
                     folium.CircleMarker(location=[row['Latitude'], row['Longitude']], radius=6, color=marker_color, fill=True, fill_color=marker_color, fill_opacity=0.8, tooltip=tooltip_text, popup=loc_name).add_to(m)
                 st.success(f"Displaying {len(filtered_df)} out of {len(df)} sample points.")
@@ -317,8 +336,8 @@ with tab2:
                 w = 0.15 
                 polys = [[[0,0],[0,1],[w,0], 'black'], [[0,0],[0,1],[-w,0], 'white'], [[0,0],[0,-1],[w,0], 'white'], [[0,0],[0,-1],[-w,0], 'black'], [[0,0],[1,0],[0,w], 'black'], [[0,0],[1,0],[0,-w], 'white'], [[0,0],[-1,0],[0,w], 'white'], [[0,0],[-1,0],[0,-w], 'black']]
                 for p in polys: ax_compass.add_patch(patches.Polygon(p[:3], facecolor=p[3], edgecolor='black', lw=0.5))
-                ax_compass.text(0, 1.25, 'N', ha='center', va='center', fontweight='bold', fontsize=14, family='serif')
-                for txt, pos in [('S', (0, -1.25)), ('E', (1.25, 0)), ('W', (-1.25, 0))]: ax_compass.text(*pos, txt, ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                ax_compass.text(0, 1.25, 'N', ha='center', va='center', fontweight='bold', fontsize=14)
+                for txt, pos in [('S', (0, -1.25)), ('E', (1.25, 0)), ('W', (-1.25, 0))]: ax_compass.text(*pos, txt, ha='center', va='center', fontsize=10, fontweight='bold')
                 ax_compass.set(xlim=(-1.5, 1.5), ylim=(-1.5, 1.5))
 
                 ax_inset = fig.add_axes(inset_coords[inset_pos]) 
@@ -503,8 +522,8 @@ with tab3:
                 w = 0.15 
                 polys = [[[0,0],[0,1],[w,0], 'black'], [[0,0],[0,1],[-w,0], 'white'], [[0,0],[0,-1],[w,0], 'white'], [[0,0],[0,-1],[-w,0], 'black'], [[0,0],[1,0],[0,w], 'black'], [[0,0],[1,0],[0,-w], 'white'], [[0,0],[-1,0],[0,w], 'white'], [[0,0],[-1,0],[0,-w], 'black']]
                 for p in polys: ax_compass_t.add_patch(patches.Polygon(p[:3], facecolor=p[3], edgecolor='black', lw=0.5))
-                ax_compass_t.text(0, 1.25, 'N', ha='center', va='center', fontweight='bold', fontsize=14, family='serif')
-                for txt, pos in [('S', (0, -1.25)), ('E', (1.25, 0)), ('W', (-1.25, 0))]: ax_compass_t.text(*pos, txt, ha='center', va='center', fontsize=10, fontweight='bold', family='serif')
+                ax_compass_t.text(0, 1.25, 'N', ha='center', va='center', fontweight='bold', fontsize=14)
+                for txt, pos in [('S', (0, -1.25)), ('E', (1.25, 0)), ('W', (-1.25, 0))]: ax_compass_t.text(*pos, txt, ha='center', va='center', fontsize=10, fontweight='bold')
                 ax_compass_t.set(xlim=(-1.5, 1.5), ylim=(-1.5, 1.5))
 
                 ax_inset_t = fig_t.add_axes(inset_coords_t[inset_pos_t]) 
