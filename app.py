@@ -6,6 +6,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.path as mpath
+import matplotlib.lines as mlines  # --- NEW: Required for custom legend handles ---
 import numpy as np
 import io
 import os
@@ -51,18 +52,29 @@ y_inner = r_inner * np.sin(angles_inner) + 2.5
 
 verts_outer = np.column_stack((x_outer, y_outer))
 verts_inner = np.column_stack((x_inner, y_inner))
-verts_dummy = np.array([[0.0, -3.5]])
 
+# The map pin WITH the dummy vertex for plotting precisely on GPS coordinates
+verts_dummy = np.array([[0.0, -3.5]])
 pin_verts = np.vstack((verts_outer, verts_inner, verts_dummy))
 pin_codes = np.full(len(pin_verts), mpath.Path.LINETO)
 pin_codes[0] = mpath.Path.MOVETO
 pin_codes[len(verts_outer)] = mpath.Path.MOVETO
 pin_codes[-1] = mpath.Path.MOVETO  
-
 custom_pin = mpath.Path(pin_verts, pin_codes)
+
+# --- NEW: The map pin WITHOUT the dummy vertex for perfect Legend Alignment ---
+pin_verts_leg = np.vstack((verts_outer, verts_inner))
+pin_codes_leg = np.full(len(pin_verts_leg), mpath.Path.LINETO)
+pin_codes_leg[0] = mpath.Path.MOVETO
+pin_codes_leg[len(verts_outer)] = mpath.Path.MOVETO
+custom_pin_legend = mpath.Path(pin_verts_leg, pin_codes_leg)
 
 marker_map = {
     "Map Pin": custom_pin, "Circle": "o", "Square": "s",
+    "Triangle": "^", "Diamond": "D", "Star": "*"
+}
+legend_marker_map = {
+    "Map Pin": custom_pin_legend, "Circle": "o", "Square": "s",
     "Triangle": "^", "Diamond": "D", "Star": "*"
 }
 
@@ -83,7 +95,8 @@ if os.path.exists(sample_csv_path):
     with open(sample_csv_path, "rb") as file:
         sample_csv_data = file.read()
 else:
-    sample_csv_data = b"Latitude,Longitude,Name\n"
+    # --- NEW: Added 'Short Name' to sample template ---
+    sample_csv_data = b"Latitude,Longitude,Name,Short Name\n20.9467,72.9520,Navsari Agricultural University,NAU\n"
     st.sidebar.warning(f"⚠️ Could not find '{sample_csv_path}'. Please make sure it is saved in the same folder as this script.")
 
 # --- Initialize Dynamic Session States ---
@@ -154,7 +167,7 @@ with tab1:
                     filtered_df = df[df[color_col].isin(selected_values)]
 
                 for _, row in filtered_df.iterrows():
-                    loc_name = row.get('Location', "Unknown Location")
+                    loc_name = row.get('Name', row.get('Location', "Unknown Location"))
                     tooltip_text = f"<div style='font-family: \"Times New Roman\", Times, serif;'><b>Location:</b> {loc_name}"
                     if color_col != "None (All Red)" and pd.notna(row[color_col]):
                         tooltip_text += f"<br><b>{color_col}:</b> {row[color_col]}"
@@ -197,19 +210,20 @@ with tab2:
             st.subheader("2. Map Styling")
             basemap_choice_d = st.selectbox("Background Map View", ["None (White Background)", "OpenStreetMap (Street View)", "Esri World Imagery (Satellite)"], key="dist_basemap")
             color_map_choice = st.selectbox("Highlight Palette", ["None (White)", "Set2", "Dark2", "Paired", "tab10", "Greens", "Blues", "YlGnBu", "OrRd", "viridis", "cividis", "plasma", "Pastel1", "Set3", "Accent"], key="dist_color")
-            font_size_d = st.slider("Label Font Size", 4, 40, 12, key="dist_font")
+            font_size_d = st.slider("Region Label Font Size", 4, 40, 12, key="dist_font")
             orientation_d = st.selectbox("Page Orientation", ["Landscape (A4)", "Portrait (A4)"], key="dist_ori")
-            
-            # --- NEW: Zoom/Margin Control ---
             margin_multiplier_d = st.slider("Map Blank Space (Zoom Out)", 0.05, 1.50, 0.35, 0.05, key="dist_margin", help="Increase this to shrink the map and make more room for the Inset and Compass.")
 
             st.subheader("3. Element Placement")
-            legend_pos_d = st.selectbox("Legend Position", list(legend_mapping.keys()), index=0, key="dist_legend")
+            col_lg1, col_lg2 = st.columns(2)
+            legend_pos_d = col_lg1.selectbox("Legend Position", list(legend_mapping.keys()), index=0, key="dist_legend")
+            # --- NEW: Legend Font Size Slider ---
+            legend_font_size_d = col_lg2.slider("Legend Font Size", 6, 24, 10, key="dist_leg_font")
+            
             col_el1, col_el2 = st.columns(2)
             with col_el1: inset_pos = st.selectbox("Inset Base Pos", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
             with col_el2: compass_pos = st.selectbox("Compass Base Pos", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
             
-            # --- NEW: Advanced Nudging ---
             with st.expander("🛠️ Fine-Tune Inset & Compass (Fix Overlaps)"):
                 st.markdown("<small>If elements still overlap your map, use these sliders to push them into empty space.</small>", unsafe_allow_html=True)
                 cx1, cx2 = st.columns(2)
@@ -265,7 +279,11 @@ with tab2:
                         st.session_state.dist_loc_layers.remove(layer_id)
                         st.rerun()
                         
-                    loc_lbl = st.text_input("Legend Name", "Locations", key=f"dloc_lbl_{layer_id}")
+                    loc_lbl = st.text_input("Layer Name (General)", "Locations", key=f"dloc_lbl_{layer_id}")
+                    
+                    # --- NEW: Abbreviation Toggle ---
+                    use_abbr_d = st.checkbox("Use Short Names on Map & Detail in Legend", value=False, key=f"dloc_abbr_{layer_id}")
+                    
                     col_loc1, col_loc2 = st.columns(2)
                     loc_color = col_loc1.color_picker("Color", "#FFFF00", key=f"dloc_col_{layer_id}")
                     loc_style = col_loc2.selectbox("Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key=f"dloc_sty_{layer_id}")
@@ -274,7 +292,10 @@ with tab2:
                     if uploaded_loc:
                         df_loc = process_uploaded_csv(uploaded_loc)
                         if df_loc is not None:
-                            dist_loc_data.append({"df": df_loc, "label": loc_lbl, "color": loc_color, "style": loc_style})
+                            dist_loc_data.append({
+                                "df": df_loc, "label": loc_lbl, "color": loc_color, 
+                                "style": loc_style, "use_abbr": use_abbr_d
+                            })
                             
             if st.button("➕ Add Location Layer", key="add_dist_loc"):
                 st.session_state.dist_loc_layers.append(st.session_state.next_dist_loc)
@@ -285,7 +306,6 @@ with tab2:
         with col4:
             fig, ax_main = plt.subplots(figsize=(11.69, 8.27) if orientation_d == "Landscape (A4)" else (8.27, 11.69), dpi=300)
             
-            # If placing legend outside, give it extra breathing room on the right
             right_margin = 0.70 if "Outside" in legend_pos_d else 0.95
             plt.subplots_adjust(top=0.90, bottom=0.05, left=0.05, right=right_margin)
             
@@ -293,6 +313,9 @@ with tab2:
             base_poly_alpha_d = 1.0 if basemap_choice_d == "None (White Background)" else 0.15
 
             gdf.plot(ax=ax_main, color='white' if basemap_choice_d == "None (White Background)" else 'none', edgecolor='black', alpha=base_poly_alpha_d, zorder=1)
+            
+            # --- CUSTOM LEGEND HANDLES LIST ---
+            custom_legend_handles_d = []
 
             if selected_districts:
                 highlighted_gdf = gdf[gdf[district_col].isin(selected_districts)]
@@ -302,8 +325,6 @@ with tab2:
                     highlighted_gdf.plot(ax=ax_main, column=district_col, cmap=color_map_choice, edgecolor='black', linewidth=1.5, alpha=poly_alpha_d, zorder=2)
                 
                 minx, miny, maxx, maxy = highlighted_gdf.total_bounds
-                
-                # Apply the user-controlled margin padding
                 margin_x = max((maxx - minx) * margin_multiplier_d, 0.05)
                 margin_y = max((maxy - miny) * margin_multiplier_d, 0.05)
                 ax_main.set_xlim(minx - margin_x, maxx + margin_x)
@@ -314,53 +335,74 @@ with tab2:
                     centroid = row.geometry.centroid
                     txt_color = 'white' if basemap_choice_d == "Esri World Imagery (Satellite)" else 'black'
                     outline_color = 'black' if txt_color == 'white' else 'white'
-                    
                     ax_main.annotate(text=row[district_col], xy=(centroid.x, centroid.y), ha='center', va='center', fontsize=font_size_d, fontweight='bold', color=txt_color, path_effects=[pe.withStroke(linewidth=3, foreground=outline_color)], zorder=4)
                     
+                # Plot Survey Points
                 for pt in dist_survey_data:
                     size = 800 if pt['style'] == "Map Pin" else 60
-                    ax_main.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label=pt['label'])
+                    # Plot point but hide from standard legend logic
+                    ax_main.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label="_nolegend_")
+                    
+                    # Create clean Custom Legend Handle
+                    h = mlines.Line2D([], [], color='none', marker=legend_marker_map[pt['style']], markerfacecolor=pt['color'], markeredgecolor='black', markersize=12, label=pt['label'])
+                    custom_legend_handles_d.append(h)
                 
+                # Plot Locations
                 for loc in dist_loc_data:
                     size = 1200 if loc['style'] == "Map Pin" else 150
-                    ax_main.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
+                    ax_main.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label="_nolegend_")
                     
                     if show_loc_labels_d:
                         name_col = next((c for c in loc['df'].columns if c.lower() in ['name', 'location', 'label', 'site']), None)
-                        if name_col:
-                            y_offset = 25 if loc['style'] == "Map Pin" else 15
-                            txt_color_l = 'white' if basemap_choice_d == "Esri World Imagery (Satellite)" else 'black'
-                            out_color_l = 'black' if txt_color_l == 'white' else 'white'
+                        short_col = next((c for c in loc['df'].columns if c.lower() in ['short name', 'short', 'abbr', 'abbreviation']), None)
+                        
+                        y_offset = 25 if loc['style'] == "Map Pin" else 15
+                        txt_color_l = 'white' if basemap_choice_d == "Esri World Imagery (Satellite)" else 'black'
+                        out_color_l = 'black' if txt_color_l == 'white' else 'white'
+                        
+                        for idx, r in loc['df'].iterrows():
+                            # Resolve names
+                            full_val = str(r[name_col]) if name_col and pd.notna(r[name_col]) else f"Loc {idx+1}"
+                            short_val = str(r[short_col]) if short_col and pd.notna(r[short_col]) else str(idx+1)
                             
-                            for _, r in loc['df'].iterrows():
-                                ax_main.annotate(str(r[name_col]), (r['Longitude'], r['Latitude']), 
-                                                 xytext=(0, y_offset), textcoords='offset points', 
-                                                 ha='center', va='bottom', fontsize=max(font_size_d - 2, 8), fontweight='bold', 
-                                                 color=txt_color_l, path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
-                
+                            # Determine what text prints on the map
+                            display_text = short_val if loc['use_abbr'] else full_val
+                            
+                            ax_main.annotate(display_text, (r['Longitude'], r['Latitude']), 
+                                             xytext=(0, y_offset), textcoords='offset points', 
+                                             ha='center', va='bottom', fontsize=max(font_size_d - 2, 8), fontweight='bold', 
+                                             color=txt_color_l, path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
+                            
+                            # If building explicit keys, append a legend line for EACH location
+                            if loc['use_abbr']:
+                                h = mlines.Line2D([], [], color='none', marker=legend_marker_map[loc['style']], markerfacecolor=loc['color'], markeredgecolor='black', markersize=12, label=f"{short_val} - {full_val}")
+                                custom_legend_handles_d.append(h)
+                                
+                    # If NOT building explicit keys, append ONE line for the whole layer
+                    if not loc['use_abbr']:
+                         h = mlines.Line2D([], [], color='none', marker=legend_marker_map[loc['style']], markerfacecolor=loc['color'], markeredgecolor='black', markersize=12, label=loc['label'])
+                         custom_legend_handles_d.append(h)
+
                 if basemap_choice_d == "OpenStreetMap (Street View)":
                     cx.add_basemap(ax_main, crs=gdf.crs.to_string(), source=cx.providers.OpenStreetMap.Mapnik, zorder=0)
                 elif basemap_choice_d == "Esri World Imagery (Satellite)":
                     cx.add_basemap(ax_main, crs=gdf.crs.to_string(), source=cx.providers.Esri.WorldImagery, zorder=0)
 
-                # --- NEW: Enhanced Legend Placing ---
-                if legend_pos_d != "None":
-                    handles, labels = ax_main.get_legend_handles_labels()
-                    if handles: 
-                        leg_config = legend_mapping[legend_pos_d]
+                # --- NEW: Enhanced Custom Legend ---
+                if legend_pos_d != "None" and custom_legend_handles_d:
+                    leg_config = legend_mapping[legend_pos_d]
+                    kwargs = {
+                        "loc": leg_config["loc"], "title": "Legend", 
+                        "fontsize": legend_font_size_d, "title_fontsize": legend_font_size_d + 2, 
+                        "frameon": True, "facecolor": 'white', "framealpha": 0.9, "edgecolor": 'black', 
+                        "shadow": True, "borderpad": 1.2, "labelspacing": 1.0, "handletextpad": 0.8
+                    }
+                    if leg_config["bbox"] is not None:
+                        kwargs["bbox_to_anchor"] = leg_config["bbox"]
                         
-                        kwargs = {
-                            "loc": leg_config["loc"], "title": "Legend", 
-                            "fontsize": 10, "title_fontsize": 12, "frameon": True, 
-                            "facecolor": 'white', "framealpha": 0.9, "edgecolor": 'black', 
-                            "shadow": True, "borderpad": 1.2, "labelspacing": 1.2, "handletextpad": 1.0
-                        }
-                        if leg_config["bbox"] is not None:
-                            kwargs["bbox_to_anchor"] = leg_config["bbox"]
-                            
-                        ax_main.legend(handles, labels, **kwargs)
+                    ax_main.legend(handles=custom_legend_handles_d, **kwargs)
 
-                # --- NEW: Fine-Tuned Inset and Compass Positioning ---
+                # Compass & Inset
                 ax_compass = fig.add_axes([compass_x_d, compass_y_d, 0.1, 0.1])
                 ax_compass.set_axis_off(); ax_compass.set_aspect('equal')
                 w = 0.15 
@@ -414,19 +456,20 @@ with tab3:
             st.subheader("2. Map Styling")
             basemap_choice_t = st.selectbox("Background Map View", ["None (White Background)", "OpenStreetMap (Street View)", "Esri World Imagery (Satellite)"], key="taluka_basemap")
             color_map_choice_taluka = st.selectbox("Highlight Palette", ["None (White)", "Set2", "Dark2", "Paired", "tab10", "Greens", "Blues", "YlGnBu", "OrRd", "viridis", "cividis", "plasma", "Pastel1", "Set3", "Accent"], key="taluka_color")
-            font_size_t = st.slider("Label Font Size", 4, 40, 10, key="taluka_font")
+            font_size_t = st.slider("Region Label Font Size", 4, 40, 10, key="taluka_font")
             orientation_t = st.selectbox("Page Orientation", ["Landscape (A4)", "Portrait (A4)"], key="taluka_ori")
-
-            # --- NEW: Zoom/Margin Control ---
             margin_multiplier_t = st.slider("Map Blank Space (Zoom Out)", 0.05, 1.50, 0.35, 0.05, key="taluka_margin", help="Increase this to shrink the map and make more room for the Inset and Compass.")
 
             st.subheader("3. Element Placement")
-            legend_pos_t = st.selectbox("Legend Position", list(legend_mapping.keys()), index=0, key="taluka_legend")
+            col_tl1, col_tl2 = st.columns(2)
+            legend_pos_t = col_tl1.selectbox("Legend Position", list(legend_mapping.keys()), index=0, key="taluka_legend")
+            # --- NEW: Legend Font Size Slider ---
+            legend_font_size_t = col_tl2.slider("Legend Font Size", 6, 24, 10, key="taluka_leg_font")
+            
             col_el1_t, col_el2_t = st.columns(2)
             with col_el1_t: inset_pos_t = st.selectbox("Inset Base Pos", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
             with col_el2_t: compass_pos_t = st.selectbox("Compass Base Pos", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
             
-            # --- NEW: Advanced Nudging ---
             with st.expander("🛠️ Fine-Tune Inset & Compass (Fix Overlaps)"):
                 st.markdown("<small>If elements still overlap your map, use these sliders to push them into empty space.</small>", unsafe_allow_html=True)
                 cx3, cx4 = st.columns(2)
@@ -482,7 +525,11 @@ with tab3:
                         st.session_state.taluka_loc_layers.remove(layer_id)
                         st.rerun()
                         
-                    loc_lbl_t = st.text_input("Legend Name", "Locations", key=f"tloc_lbl_{layer_id}")
+                    loc_lbl_t = st.text_input("Layer Name (General)", "Locations", key=f"tloc_lbl_{layer_id}")
+                    
+                    # --- NEW: Abbreviation Toggle ---
+                    use_abbr_t = st.checkbox("Use Short Names on Map & Detail in Legend", value=False, key=f"tloc_abbr_{layer_id}")
+
                     col_loc1_t, col_loc2_t = st.columns(2)
                     loc_color_t = col_loc1_t.color_picker("Color", "#FFFF00", key=f"tloc_col_{layer_id}")
                     loc_style_t = col_loc2_t.selectbox("Shape", ["Map Pin", "Star", "Diamond", "Square", "Circle", "Triangle"], key=f"tloc_sty_{layer_id}")
@@ -491,7 +538,10 @@ with tab3:
                     if uploaded_loc_t:
                         df_loc_t = process_uploaded_csv(uploaded_loc_t)
                         if df_loc_t is not None:
-                            taluka_loc_data.append({"df": df_loc_t, "label": loc_lbl_t, "color": loc_color_t, "style": loc_style_t})
+                            taluka_loc_data.append({
+                                "df": df_loc_t, "label": loc_lbl_t, "color": loc_color_t, 
+                                "style": loc_style_t, "use_abbr": use_abbr_t
+                            })
                             
             if st.button("➕ Add Location Layer", key="add_taluka_loc"):
                 st.session_state.taluka_loc_layers.append(st.session_state.next_taluka_loc)
@@ -502,7 +552,6 @@ with tab3:
         with col6:
             fig_t, ax_main_t = plt.subplots(figsize=(11.69, 8.27) if orientation_t == "Landscape (A4)" else (8.27, 11.69), dpi=300)
             
-            # If placing legend outside, give it extra breathing room on the right
             right_margin_t = 0.70 if "Outside" in legend_pos_t else 0.95
             plt.subplots_adjust(top=0.90, bottom=0.05, left=0.05, right=right_margin_t)
             
@@ -510,6 +559,9 @@ with tab3:
             base_poly_alpha_t = 1.0 if basemap_choice_t == "None (White Background)" else 0.15
 
             gdf_talukas.plot(ax=ax_main_t, color='white' if basemap_choice_t == "None (White Background)" else 'none', edgecolor='black', linewidth=0.3, alpha=base_poly_alpha_t, zorder=1)
+
+            # --- CUSTOM LEGEND HANDLES LIST ---
+            custom_legend_handles_t = []
 
             if selected_talukas:
                 highlighted_talukas = gdf_talukas[gdf_talukas[taluka_col].isin(selected_talukas)]
@@ -519,8 +571,6 @@ with tab3:
                     highlighted_talukas.plot(ax=ax_main_t, column=taluka_col, cmap=color_map_choice_taluka, edgecolor='black', linewidth=1.5, alpha=poly_alpha_t, zorder=2)
                 
                 minx, miny, maxx, maxy = highlighted_talukas.total_bounds
-                
-                # Apply the user-controlled margin padding
                 margin_x_t = max((maxx - minx) * margin_multiplier_t, 0.05)
                 margin_y_t = max((maxy - miny) * margin_multiplier_t, 0.05)
                 ax_main_t.set_xlim(minx - margin_x_t, maxx + margin_x_t)
@@ -532,53 +582,74 @@ with tab3:
                         centroid = row.geometry.centroid
                         txt_color = 'white' if basemap_choice_t == "Esri World Imagery (Satellite)" else 'black'
                         outline_color = 'black' if txt_color == 'white' else 'white'
-                        
                         ax_main_t.annotate(text=row[taluka_col], xy=(centroid.x, centroid.y), ha='center', va='center', fontsize=font_size_t, fontweight='bold', color=txt_color, path_effects=[pe.withStroke(linewidth=3, foreground=outline_color)], zorder=4)
                         
+                # Plot Survey Points
                 for pt in taluka_survey_data:
                     size = 800 if pt['style'] == "Map Pin" else 60
-                    ax_main_t.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label=pt['label'])
+                    # Plot point but hide from standard legend logic
+                    ax_main_t.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label="_nolegend_")
+                    
+                    # Create clean Custom Legend Handle
+                    h = mlines.Line2D([], [], color='none', marker=legend_marker_map[pt['style']], markerfacecolor=pt['color'], markeredgecolor='black', markersize=12, label=pt['label'])
+                    custom_legend_handles_t.append(h)
 
+                # Plot Locations
                 for loc in taluka_loc_data:
                     size = 1200 if loc['style'] == "Map Pin" else 150
-                    ax_main_t.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
+                    ax_main_t.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label="_nolegend_")
                     
                     if show_loc_labels_t:
                         name_col_t = next((c for c in loc['df'].columns if c.lower() in ['name', 'location', 'label', 'site']), None)
-                        if name_col_t:
-                            y_offset_t = 20 if loc['style'] == "Map Pin" else 15
-                            txt_color_l = 'white' if basemap_choice_t == "Esri World Imagery (Satellite)" else 'black'
-                            out_color_l = 'black' if txt_color_l == 'white' else 'white'
+                        short_col_t = next((c for c in loc['df'].columns if c.lower() in ['short name', 'short', 'abbr', 'abbreviation']), None)
+                        
+                        y_offset_t = 20 if loc['style'] == "Map Pin" else 15
+                        txt_color_l = 'white' if basemap_choice_t == "Esri World Imagery (Satellite)" else 'black'
+                        out_color_l = 'black' if txt_color_l == 'white' else 'white'
+                        
+                        for idx, r in loc['df'].iterrows():
+                            # Resolve names
+                            full_val = str(r[name_col_t]) if name_col_t and pd.notna(r[name_col_t]) else f"Loc {idx+1}"
+                            short_val = str(r[short_col_t]) if short_col_t and pd.notna(r[short_col_t]) else str(idx+1)
                             
-                            for _, r in loc['df'].iterrows():
-                                ax_main_t.annotate(str(r[name_col_t]), (r['Longitude'], r['Latitude']), 
-                                                   xytext=(0, y_offset_t), textcoords='offset points', 
-                                                   ha='center', va='bottom', fontsize=max(font_size_t - 2, 8), fontweight='bold', 
-                                                   color=txt_color_l, path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
+                            # Determine what text prints on the map
+                            display_text = short_val if loc['use_abbr'] else full_val
+                            
+                            ax_main_t.annotate(display_text, (r['Longitude'], r['Latitude']), 
+                                               xytext=(0, y_offset_t), textcoords='offset points', 
+                                               ha='center', va='bottom', fontsize=max(font_size_t - 2, 8), fontweight='bold', 
+                                               color=txt_color_l, path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
+                            
+                            # If building explicit keys, append a legend line for EACH location
+                            if loc['use_abbr']:
+                                h = mlines.Line2D([], [], color='none', marker=legend_marker_map[loc['style']], markerfacecolor=loc['color'], markeredgecolor='black', markersize=12, label=f"{short_val} - {full_val}")
+                                custom_legend_handles_t.append(h)
+                                
+                    # If NOT building explicit keys, append ONE line for the whole layer
+                    if not loc['use_abbr']:
+                         h = mlines.Line2D([], [], color='none', marker=legend_marker_map[loc['style']], markerfacecolor=loc['color'], markeredgecolor='black', markersize=12, label=loc['label'])
+                         custom_legend_handles_t.append(h)
                 
                 if basemap_choice_t == "OpenStreetMap (Street View)":
                     cx.add_basemap(ax_main_t, crs=gdf_talukas.crs.to_string(), source=cx.providers.OpenStreetMap.Mapnik, zorder=0)
                 elif basemap_choice_t == "Esri World Imagery (Satellite)":
                     cx.add_basemap(ax_main_t, crs=gdf_talukas.crs.to_string(), source=cx.providers.Esri.WorldImagery, zorder=0)
 
-                # --- NEW: Enhanced Legend Placing ---
-                if legend_pos_t != "None":
-                    handles, labels = ax_main_t.get_legend_handles_labels()
-                    if handles: 
-                        leg_config_t = legend_mapping[legend_pos_t]
+                # --- NEW: Enhanced Custom Legend ---
+                if legend_pos_t != "None" and custom_legend_handles_t:
+                    leg_config_t = legend_mapping[legend_pos_t]
+                    kwargs_t = {
+                        "loc": leg_config_t["loc"], "title": "Legend", 
+                        "fontsize": legend_font_size_t, "title_fontsize": legend_font_size_t + 2, 
+                        "frameon": True, "facecolor": 'white', "framealpha": 0.9, "edgecolor": 'black', 
+                        "shadow": True, "borderpad": 1.2, "labelspacing": 1.0, "handletextpad": 0.8
+                    }
+                    if leg_config_t["bbox"] is not None:
+                        kwargs_t["bbox_to_anchor"] = leg_config_t["bbox"]
                         
-                        kwargs_t = {
-                            "loc": leg_config_t["loc"], "title": "Legend", 
-                            "fontsize": 10, "title_fontsize": 12, "frameon": True, 
-                            "facecolor": 'white', "framealpha": 0.9, "edgecolor": 'black', 
-                            "shadow": True, "borderpad": 1.2, "labelspacing": 1.2, "handletextpad": 1.0
-                        }
-                        if leg_config_t["bbox"] is not None:
-                            kwargs_t["bbox_to_anchor"] = leg_config_t["bbox"]
-                            
-                        ax_main_t.legend(handles, labels, **kwargs_t)
+                    ax_main_t.legend(handles=custom_legend_handles_t, **kwargs_t)
 
-                # --- NEW: Fine-Tuned Inset and Compass Positioning ---
+                # Compass & Inset
                 ax_compass_t = fig_t.add_axes([compass_x_t, compass_y_t, 0.1, 0.1])
                 ax_compass_t.set_axis_off(); ax_compass_t.set_aspect('equal')
                 w = 0.15 
