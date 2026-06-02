@@ -9,7 +9,7 @@ import matplotlib.path as mpath
 import numpy as np
 import io
 import os
-import contextily as cx  # --- NEW: Library for static basemaps ---
+import contextily as cx
 
 # --- Page Configuration ---
 st.set_page_config(page_title="Ph.D. Survey Map Generator", layout="wide")
@@ -17,7 +17,6 @@ st.set_page_config(page_title="Ph.D. Survey Map Generator", layout="wide")
 # --- Set Global Font to Times New Roman for Streamlit UI ---
 st.markdown("""
     <style>
-    /* Apply Times New Roman to all text elements in the Streamlit app */
     html, body, [class*="css"], [class*="st-"] {
         font-family: "Times New Roman", Times, serif !important;
     }
@@ -65,6 +64,17 @@ custom_pin = mpath.Path(pin_verts, pin_codes)
 marker_map = {
     "Map Pin": custom_pin, "Circle": "o", "Square": "s",
     "Triangle": "^", "Diamond": "D", "Star": "*"
+}
+
+# --- Legend Mapping Dictionary ---
+legend_mapping = {
+    "Outside Top Right": {"loc": "upper left", "bbox": (1.02, 1)},
+    "Outside Center Right": {"loc": "center left", "bbox": (1.02, 0.5)},
+    "Outside Bottom Right": {"loc": "lower left", "bbox": (1.02, 0)},
+    "Inside Top Right": {"loc": "upper right", "bbox": None},
+    "Inside Top Left": {"loc": "upper left", "bbox": None},
+    "Inside Bottom Right": {"loc": "lower right", "bbox": None},
+    "Inside Bottom Left": {"loc": "lower left", "bbox": None},
 }
 
 # --- Load User's Custom Sample CSV ---
@@ -172,7 +182,6 @@ with tab2:
         st.error(f"Cannot find {district_geojson_path}.")
     else:
         gdf = gpd.read_file(district_geojson_path)
-        # Ensure CRS is set to EPSG:4326 (Standard GPS Lat/Lon) for contextily alignment
         if gdf.crs is None: gdf.set_crs(epsg=4326, inplace=True)
         district_col = next((col for col in ['dtname', 'NAME_2', 'district', 'Dist_Name', 'district_name', 'REGNAME'] if col in gdf.columns), None)
         gdf[district_col] = gdf[district_col].astype(str).str.strip()
@@ -186,19 +195,31 @@ with tab2:
             selected_districts = st.multiselect("Highlight districts:", options=all_districts, default=[d for d in all_districts if str(d).lower().strip() in ideal_defaults], key="dist_select")
             
             st.subheader("2. Map Styling")
-            # --- NEW: Basemap Selection ---
             basemap_choice_d = st.selectbox("Background Map View", ["None (White Background)", "OpenStreetMap (Street View)", "Esri World Imagery (Satellite)"], key="dist_basemap")
-            
-            modern_palettes = ["None (White)", "Set2", "Dark2", "Paired", "tab10", "Greens", "Blues", "YlGnBu", "OrRd", "viridis", "cividis", "plasma", "Pastel1", "Set3", "Accent"]
-            color_map_choice = st.selectbox("Highlight Palette", modern_palettes, key="dist_color")
+            color_map_choice = st.selectbox("Highlight Palette", ["None (White)", "Set2", "Dark2", "Paired", "tab10", "Greens", "Blues", "YlGnBu", "OrRd", "viridis", "cividis", "plasma", "Pastel1", "Set3", "Accent"], key="dist_color")
             font_size_d = st.slider("Label Font Size", 4, 40, 12, key="dist_font")
             orientation_d = st.selectbox("Page Orientation", ["Landscape (A4)", "Portrait (A4)"], key="dist_ori")
+            
+            # --- NEW: Zoom/Margin Control ---
+            margin_multiplier_d = st.slider("Map Blank Space (Zoom Out)", 0.05, 1.50, 0.35, 0.05, key="dist_margin", help="Increase this to shrink the map and make more room for the Inset and Compass.")
 
             st.subheader("3. Element Placement")
+            legend_pos_d = st.selectbox("Legend Position", list(legend_mapping.keys()), index=0, key="dist_legend")
             col_el1, col_el2 = st.columns(2)
-            with col_el1: inset_pos = st.selectbox("Inset Map", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
-            with col_el2: compass_pos = st.selectbox("Compass", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
-            legend_pos_d = st.selectbox("Legend Position", ["None", "upper right", "upper left", "lower right", "lower left", "center left", "center right"], index=1, key="dist_legend")
+            with col_el1: inset_pos = st.selectbox("Inset Base Pos", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="dist_inset")
+            with col_el2: compass_pos = st.selectbox("Compass Base Pos", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="dist_compass")
+            
+            # --- NEW: Advanced Nudging ---
+            with st.expander("🛠️ Fine-Tune Inset & Compass (Fix Overlaps)"):
+                st.markdown("<small>If elements still overlap your map, use these sliders to push them into empty space.</small>", unsafe_allow_html=True)
+                cx1, cx2 = st.columns(2)
+                base_i = {"Top Left": [0.05, 0.55], "Top Right": [0.70, 0.55], "Bottom Left": [0.05, 0.05], "Bottom Right": [0.70, 0.05]}[inset_pos]
+                base_c = {"Top Right": [0.85, 0.70], "Top Left": [0.05, 0.70], "Bottom Right": [0.85, 0.05], "Bottom Left": [0.05, 0.05]}[compass_pos]
+                
+                inset_x_d = cx1.slider("Inset X (Left ↔ Right)", 0.0, 1.0, base_i[0], 0.01, key="ix_d")
+                inset_y_d = cx1.slider("Inset Y (Bottom ↕ Top)", 0.0, 1.0, base_i[1], 0.01, key="iy_d")
+                compass_x_d = cx2.slider("Compass X (Left ↔ Right)", 0.0, 1.0, base_c[0], 0.01, key="cx_d")
+                compass_y_d = cx2.slider("Compass Y (Bottom ↕ Top)", 0.0, 1.0, base_c[1], 0.01, key="cy_d")
             
             # --- DYNAMIC SURVEY POINTS ---
             st.markdown("---")
@@ -223,9 +244,7 @@ with tab2:
                         df_pts = process_uploaded_csv(uploaded_file)
                         if df_pts is not None:
                             dist_survey_data.append({"df": df_pts, "label": pt_lbl, "color": pt_color, "style": pt_style})
-                        else:
-                            st.error("Missing Latitude/Longitude headers.")
-            
+                        
             if st.button("➕ Add Survey Layer", key="add_dist_surv"):
                 st.session_state.dist_survey_layers.append(st.session_state.next_dist_survey)
                 st.session_state.next_dist_survey += 1
@@ -234,7 +253,6 @@ with tab2:
             # --- DYNAMIC IMPORTANT LOCATIONS ---
             st.markdown("---")
             st.subheader("5. Important Locations")
-            st.download_button("📄 Download Sample Locations CSV", data=sample_csv_data, file_name="sample_locations.csv", mime="text/csv", key="sample_loc_d")
             show_loc_labels_d = st.checkbox("Show Location Names on Map", value=True, key="dist_loc_showlbl")
             
             dist_loc_data = []
@@ -257,8 +275,6 @@ with tab2:
                         df_loc = process_uploaded_csv(uploaded_loc)
                         if df_loc is not None:
                             dist_loc_data.append({"df": df_loc, "label": loc_lbl, "color": loc_color, "style": loc_style})
-                        else:
-                            st.error("Missing Latitude/Longitude headers.")
                             
             if st.button("➕ Add Location Layer", key="add_dist_loc"):
                 st.session_state.dist_loc_layers.append(st.session_state.next_dist_loc)
@@ -267,17 +283,15 @@ with tab2:
 
         # --- PLOTTING LOGIC DISTRICT ---
         with col4:
-            inset_coords = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
-            compass_coords = {"Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1], "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]}
-
             fig, ax_main = plt.subplots(figsize=(11.69, 8.27) if orientation_d == "Landscape (A4)" else (8.27, 11.69), dpi=300)
-            plt.subplots_adjust(top=0.82, bottom=0.05, left=0.05, right=0.95)
             
-            # Make polygons slightly transparent if basemap is enabled
+            # If placing legend outside, give it extra breathing room on the right
+            right_margin = 0.70 if "Outside" in legend_pos_d else 0.95
+            plt.subplots_adjust(top=0.90, bottom=0.05, left=0.05, right=right_margin)
+            
             poly_alpha_d = 1.0 if basemap_choice_d == "None (White Background)" else 0.55
             base_poly_alpha_d = 1.0 if basemap_choice_d == "None (White Background)" else 0.15
 
-            # Plot unselected base regions
             gdf.plot(ax=ax_main, color='white' if basemap_choice_d == "None (White Background)" else 'none', edgecolor='black', alpha=base_poly_alpha_d, zorder=1)
 
             if selected_districts:
@@ -289,13 +303,13 @@ with tab2:
                 
                 minx, miny, maxx, maxy = highlighted_gdf.total_bounds
                 
-                margin_x = max((maxx - minx) * 0.35, 0.05)
-                margin_y = max((maxy - miny) * 0.35, 0.05)
+                # Apply the user-controlled margin padding
+                margin_x = max((maxx - minx) * margin_multiplier_d, 0.05)
+                margin_y = max((maxy - miny) * margin_multiplier_d, 0.05)
                 ax_main.set_xlim(minx - margin_x, maxx + margin_x)
                 ax_main.set_ylim(miny - margin_y, maxy + margin_y)
                 
                 import matplotlib.patheffects as pe
-                # District Labels
                 for idx, row in highlighted_gdf.iterrows():
                     centroid = row.geometry.centroid
                     txt_color = 'white' if basemap_choice_d == "Esri World Imagery (Satellite)" else 'black'
@@ -303,12 +317,10 @@ with tab2:
                     
                     ax_main.annotate(text=row[district_col], xy=(centroid.x, centroid.y), ha='center', va='center', fontsize=font_size_d, fontweight='bold', color=txt_color, path_effects=[pe.withStroke(linewidth=3, foreground=outline_color)], zorder=4)
                     
-                # Points
                 for pt in dist_survey_data:
                     size = 800 if pt['style'] == "Map Pin" else 60
                     ax_main.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label=pt['label'])
                 
-                # Locations
                 for loc in dist_loc_data:
                     size = 1200 if loc['style'] == "Map Pin" else 150
                     ax_main.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
@@ -324,26 +336,32 @@ with tab2:
                                 ax_main.annotate(str(r[name_col]), (r['Longitude'], r['Latitude']), 
                                                  xytext=(0, y_offset), textcoords='offset points', 
                                                  ha='center', va='bottom', fontsize=max(font_size_d - 2, 8), fontweight='bold', 
-                                                 color=txt_color_l,
-                                                 path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
+                                                 color=txt_color_l, path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
                 
-                # --- NEW: ADD BASEMAP VIA CONTEXTILY ---
                 if basemap_choice_d == "OpenStreetMap (Street View)":
                     cx.add_basemap(ax_main, crs=gdf.crs.to_string(), source=cx.providers.OpenStreetMap.Mapnik, zorder=0)
                 elif basemap_choice_d == "Esri World Imagery (Satellite)":
                     cx.add_basemap(ax_main, crs=gdf.crs.to_string(), source=cx.providers.Esri.WorldImagery, zorder=0)
 
-                # Legend
+                # --- NEW: Enhanced Legend Placing ---
                 if legend_pos_d != "None":
                     handles, labels = ax_main.get_legend_handles_labels()
                     if handles: 
-                        ax_main.legend(handles, labels, loc=legend_pos_d, title="Legend", 
-                                       fontsize=10, title_fontsize=12, frameon=True, 
-                                       facecolor='white', framealpha=0.9, edgecolor='black', shadow=True,
-                                       borderpad=1.2, labelspacing=1.2, handletextpad=1.0) 
+                        leg_config = legend_mapping[legend_pos_d]
+                        
+                        kwargs = {
+                            "loc": leg_config["loc"], "title": "Legend", 
+                            "fontsize": 10, "title_fontsize": 12, "frameon": True, 
+                            "facecolor": 'white', "framealpha": 0.9, "edgecolor": 'black', 
+                            "shadow": True, "borderpad": 1.2, "labelspacing": 1.2, "handletextpad": 1.0
+                        }
+                        if leg_config["bbox"] is not None:
+                            kwargs["bbox_to_anchor"] = leg_config["bbox"]
+                            
+                        ax_main.legend(handles, labels, **kwargs)
 
-                # Compass & Inset
-                ax_compass = fig.add_axes(compass_coords[compass_pos])
+                # --- NEW: Fine-Tuned Inset and Compass Positioning ---
+                ax_compass = fig.add_axes([compass_x_d, compass_y_d, 0.1, 0.1])
                 ax_compass.set_axis_off(); ax_compass.set_aspect('equal')
                 w = 0.15 
                 polys = [[[0,0],[0,1],[w,0], 'black'], [[0,0],[0,1],[-w,0], 'white'], [[0,0],[0,-1],[w,0], 'white'], [[0,0],[0,-1],[-w,0], 'black'], [[0,0],[1,0],[0,w], 'black'], [[0,0],[1,0],[0,-w], 'white'], [[0,0],[-1,0],[0,w], 'white'], [[0,0],[-1,0],[0,-w], 'black']]
@@ -352,7 +370,7 @@ with tab2:
                 for txt, pos in [('S', (0, -1.25)), ('E', (1.25, 0)), ('W', (-1.25, 0))]: ax_compass.text(*pos, txt, ha='center', va='center', fontsize=10, fontweight='bold')
                 ax_compass.set(xlim=(-1.5, 1.5), ylim=(-1.5, 1.5))
 
-                ax_inset = fig.add_axes(inset_coords[inset_pos]) 
+                ax_inset = fig.add_axes([inset_x_d, inset_y_d, 0.25, 0.25]) 
                 gdf.plot(ax=ax_inset, color='white', edgecolor='gray', linewidth=0.5)
                 highlighted_gdf.plot(ax=ax_inset, color='#d3d3d3' if color_map_choice == "None (White)" else '#ff66b2', edgecolor='black', linewidth=0.8)
                 ax_inset.set_xticks([]); ax_inset.set_yticks([])
@@ -382,7 +400,6 @@ with tab3:
         st.error(f"Cannot find {taluka_geojson_path}.")
     else:
         gdf_talukas = gpd.read_file(taluka_geojson_path)
-        # Ensure CRS is set to EPSG:4326 for contextily alignment
         if gdf_talukas.crs is None: gdf_talukas.set_crs(epsg=4326, inplace=True)
         taluka_col = next((c for c in ['NAME_3', 'taluka', 'Taluka_Name', 'taluka_name', 'TALUKA', 'Sub_Distri', 'subdistrict', 'sdtname', 'tehsil_name', 'Tehsil', 'NAME_2'] if c in gdf_talukas.columns), None)
         gdf_talukas[taluka_col] = gdf_talukas[taluka_col].astype(str).str.strip()
@@ -395,19 +412,32 @@ with tab3:
             selected_talukas = st.multiselect("Highlight talukas:", options=all_talukas, key="taluka_select")
             
             st.subheader("2. Map Styling")
-            # --- NEW: Basemap Selection ---
             basemap_choice_t = st.selectbox("Background Map View", ["None (White Background)", "OpenStreetMap (Street View)", "Esri World Imagery (Satellite)"], key="taluka_basemap")
-            
-            color_map_choice_taluka = st.selectbox("Highlight Palette", modern_palettes, key="taluka_color")
+            color_map_choice_taluka = st.selectbox("Highlight Palette", ["None (White)", "Set2", "Dark2", "Paired", "tab10", "Greens", "Blues", "YlGnBu", "OrRd", "viridis", "cividis", "plasma", "Pastel1", "Set3", "Accent"], key="taluka_color")
             font_size_t = st.slider("Label Font Size", 4, 40, 10, key="taluka_font")
             orientation_t = st.selectbox("Page Orientation", ["Landscape (A4)", "Portrait (A4)"], key="taluka_ori")
 
+            # --- NEW: Zoom/Margin Control ---
+            margin_multiplier_t = st.slider("Map Blank Space (Zoom Out)", 0.05, 1.50, 0.35, 0.05, key="taluka_margin", help="Increase this to shrink the map and make more room for the Inset and Compass.")
+
             st.subheader("3. Element Placement")
+            legend_pos_t = st.selectbox("Legend Position", list(legend_mapping.keys()), index=0, key="taluka_legend")
             col_el1_t, col_el2_t = st.columns(2)
-            with col_el1_t: inset_pos_t = st.selectbox("Inset Map", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
-            with col_el2_t: compass_pos_t = st.selectbox("Compass", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
-            legend_pos_t = st.selectbox("Legend Position", ["None", "upper right", "upper left", "lower right", "lower left", "center left", "center right"], index=1, key="taluka_legend")
+            with col_el1_t: inset_pos_t = st.selectbox("Inset Base Pos", ["Top Left", "Top Right", "Bottom Left", "Bottom Right"], index=0, key="taluka_inset")
+            with col_el2_t: compass_pos_t = st.selectbox("Compass Base Pos", ["Top Right", "Top Left", "Bottom Right", "Bottom Left"], index=0, key="taluka_compass")
             
+            # --- NEW: Advanced Nudging ---
+            with st.expander("🛠️ Fine-Tune Inset & Compass (Fix Overlaps)"):
+                st.markdown("<small>If elements still overlap your map, use these sliders to push them into empty space.</small>", unsafe_allow_html=True)
+                cx3, cx4 = st.columns(2)
+                base_i_t = {"Top Left": [0.05, 0.55], "Top Right": [0.70, 0.55], "Bottom Left": [0.05, 0.05], "Bottom Right": [0.70, 0.05]}[inset_pos_t]
+                base_c_t = {"Top Right": [0.85, 0.70], "Top Left": [0.05, 0.70], "Bottom Right": [0.85, 0.05], "Bottom Left": [0.05, 0.05]}[compass_pos_t]
+                
+                inset_x_t = cx3.slider("Inset X (Left ↔ Right)", 0.0, 1.0, base_i_t[0], 0.01, key="ix_t")
+                inset_y_t = cx3.slider("Inset Y (Bottom ↕ Top)", 0.0, 1.0, base_i_t[1], 0.01, key="iy_t")
+                compass_x_t = cx4.slider("Compass X (Left ↔ Right)", 0.0, 1.0, base_c_t[0], 0.01, key="cx_t")
+                compass_y_t = cx4.slider("Compass Y (Bottom ↕ Top)", 0.0, 1.0, base_c_t[1], 0.01, key="cy_t")
+
             # --- DYNAMIC SURVEY POINTS ---
             st.markdown("---")
             st.subheader("4. Survey Points")
@@ -431,8 +461,6 @@ with tab3:
                         df_pts_t = process_uploaded_csv(uploaded_file_t)
                         if df_pts_t is not None:
                             taluka_survey_data.append({"df": df_pts_t, "label": pt_lbl_t, "color": pt_color_t, "style": pt_style_t})
-                        else:
-                            st.error("Missing Latitude/Longitude headers.")
             
             if st.button("➕ Add Survey Layer", key="add_taluka_surv"):
                 st.session_state.taluka_survey_layers.append(st.session_state.next_taluka_survey)
@@ -442,7 +470,6 @@ with tab3:
             # --- DYNAMIC IMPORTANT LOCATIONS ---
             st.markdown("---")
             st.subheader("5. Important Locations")
-            st.download_button("📄 Download Sample Locations CSV", data=sample_csv_data, file_name="sample_locations.csv", mime="text/csv", key="sample_loc_t")
             show_loc_labels_t = st.checkbox("Show Location Names on Map", value=True, key="taluka_loc_showlbl")
             
             taluka_loc_data = []
@@ -465,8 +492,6 @@ with tab3:
                         df_loc_t = process_uploaded_csv(uploaded_loc_t)
                         if df_loc_t is not None:
                             taluka_loc_data.append({"df": df_loc_t, "label": loc_lbl_t, "color": loc_color_t, "style": loc_style_t})
-                        else:
-                            st.error("Missing Latitude/Longitude headers.")
                             
             if st.button("➕ Add Location Layer", key="add_taluka_loc"):
                 st.session_state.taluka_loc_layers.append(st.session_state.next_taluka_loc)
@@ -475,17 +500,15 @@ with tab3:
 
         # --- PLOTTING LOGIC TALUKA ---
         with col6:
-            inset_coords_t = {"Top Left": [0.05, 0.55, 0.25, 0.25], "Top Right": [0.70, 0.55, 0.25, 0.25], "Bottom Left": [0.05, 0.05, 0.25, 0.25], "Bottom Right": [0.70, 0.05, 0.25, 0.25]}
-            compass_coords_t = {"Top Right": [0.85, 0.70, 0.1, 0.1], "Top Left": [0.05, 0.70, 0.1, 0.1], "Bottom Right": [0.85, 0.05, 0.1, 0.1], "Bottom Left": [0.05, 0.05, 0.1, 0.1]}
-
             fig_t, ax_main_t = plt.subplots(figsize=(11.69, 8.27) if orientation_t == "Landscape (A4)" else (8.27, 11.69), dpi=300)
-            plt.subplots_adjust(top=0.82, bottom=0.05, left=0.05, right=0.95)
             
-            # Make polygons slightly transparent if basemap is enabled
+            # If placing legend outside, give it extra breathing room on the right
+            right_margin_t = 0.70 if "Outside" in legend_pos_t else 0.95
+            plt.subplots_adjust(top=0.90, bottom=0.05, left=0.05, right=right_margin_t)
+            
             poly_alpha_t = 1.0 if basemap_choice_t == "None (White Background)" else 0.55
             base_poly_alpha_t = 1.0 if basemap_choice_t == "None (White Background)" else 0.15
 
-            # Plot unselected base regions
             gdf_talukas.plot(ax=ax_main_t, color='white' if basemap_choice_t == "None (White Background)" else 'none', edgecolor='black', linewidth=0.3, alpha=base_poly_alpha_t, zorder=1)
 
             if selected_talukas:
@@ -497,8 +520,9 @@ with tab3:
                 
                 minx, miny, maxx, maxy = highlighted_talukas.total_bounds
                 
-                margin_x_t = max((maxx - minx) * 0.35, 0.05)
-                margin_y_t = max((maxy - miny) * 0.35, 0.05)
+                # Apply the user-controlled margin padding
+                margin_x_t = max((maxx - minx) * margin_multiplier_t, 0.05)
+                margin_y_t = max((maxy - miny) * margin_multiplier_t, 0.05)
                 ax_main_t.set_xlim(minx - margin_x_t, maxx + margin_x_t)
                 ax_main_t.set_ylim(miny - margin_y_t, maxy + margin_y_t)
                 
@@ -511,12 +535,10 @@ with tab3:
                         
                         ax_main_t.annotate(text=row[taluka_col], xy=(centroid.x, centroid.y), ha='center', va='center', fontsize=font_size_t, fontweight='bold', color=txt_color, path_effects=[pe.withStroke(linewidth=3, foreground=outline_color)], zorder=4)
                         
-                # DYNAMIC PLOT: SURVEY POINTS
                 for pt in taluka_survey_data:
                     size = 800 if pt['style'] == "Map Pin" else 60
                     ax_main_t.scatter(pt['df']['Longitude'].values, pt['df']['Latitude'].values, color=pt['color'], edgecolor='black', marker=marker_map[pt['style']], s=size, zorder=5, linewidth=0.8, label=pt['label'])
 
-                # DYNAMIC PLOT: LOCATIONS
                 for loc in taluka_loc_data:
                     size = 1200 if loc['style'] == "Map Pin" else 150
                     ax_main_t.scatter(loc['df']['Longitude'].values, loc['df']['Latitude'].values, color=loc['color'], edgecolor='black', marker=marker_map[loc['style']], s=size, zorder=6, linewidth=1.2, label=loc['label'])
@@ -532,26 +554,32 @@ with tab3:
                                 ax_main_t.annotate(str(r[name_col_t]), (r['Longitude'], r['Latitude']), 
                                                    xytext=(0, y_offset_t), textcoords='offset points', 
                                                    ha='center', va='bottom', fontsize=max(font_size_t - 2, 8), fontweight='bold', 
-                                                   color=txt_color_l,
-                                                   path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
+                                                   color=txt_color_l, path_effects=[pe.withStroke(linewidth=2.5, foreground=out_color_l)], zorder=7)
                 
-                # --- NEW: ADD BASEMAP VIA CONTEXTILY ---
                 if basemap_choice_t == "OpenStreetMap (Street View)":
                     cx.add_basemap(ax_main_t, crs=gdf_talukas.crs.to_string(), source=cx.providers.OpenStreetMap.Mapnik, zorder=0)
                 elif basemap_choice_t == "Esri World Imagery (Satellite)":
                     cx.add_basemap(ax_main_t, crs=gdf_talukas.crs.to_string(), source=cx.providers.Esri.WorldImagery, zorder=0)
 
-                # LEGEND WITH CLEAN ALIGNMENT AND SPACING
+                # --- NEW: Enhanced Legend Placing ---
                 if legend_pos_t != "None":
                     handles, labels = ax_main_t.get_legend_handles_labels()
                     if handles: 
-                        ax_main_t.legend(handles, labels, loc=legend_pos_t, title="Legend", 
-                                         fontsize=10, title_fontsize=12, frameon=True, 
-                                         facecolor='white', framealpha=0.9, edgecolor='black', shadow=True,
-                                         borderpad=1.2, labelspacing=1.2, handletextpad=1.0) 
+                        leg_config_t = legend_mapping[legend_pos_t]
+                        
+                        kwargs_t = {
+                            "loc": leg_config_t["loc"], "title": "Legend", 
+                            "fontsize": 10, "title_fontsize": 12, "frameon": True, 
+                            "facecolor": 'white', "framealpha": 0.9, "edgecolor": 'black', 
+                            "shadow": True, "borderpad": 1.2, "labelspacing": 1.2, "handletextpad": 1.0
+                        }
+                        if leg_config_t["bbox"] is not None:
+                            kwargs_t["bbox_to_anchor"] = leg_config_t["bbox"]
+                            
+                        ax_main_t.legend(handles, labels, **kwargs_t)
 
-                # COMPASS & INSET MAP
-                ax_compass_t = fig_t.add_axes(compass_coords_t[compass_pos_t])
+                # --- NEW: Fine-Tuned Inset and Compass Positioning ---
+                ax_compass_t = fig_t.add_axes([compass_x_t, compass_y_t, 0.1, 0.1])
                 ax_compass_t.set_axis_off(); ax_compass_t.set_aspect('equal')
                 w = 0.15 
                 polys = [[[0,0],[0,1],[w,0], 'black'], [[0,0],[0,1],[-w,0], 'white'], [[0,0],[0,-1],[w,0], 'white'], [[0,0],[0,-1],[-w,0], 'black'], [[0,0],[1,0],[0,w], 'black'], [[0,0],[1,0],[0,-w], 'white'], [[0,0],[-1,0],[0,w], 'white'], [[0,0],[-1,0],[0,-w], 'black']]
@@ -560,7 +588,7 @@ with tab3:
                 for txt, pos in [('S', (0, -1.25)), ('E', (1.25, 0)), ('W', (-1.25, 0))]: ax_compass_t.text(*pos, txt, ha='center', va='center', fontsize=10, fontweight='bold')
                 ax_compass_t.set(xlim=(-1.5, 1.5), ylim=(-1.5, 1.5))
 
-                ax_inset_t = fig_t.add_axes(inset_coords_t[inset_pos_t]) 
+                ax_inset_t = fig_t.add_axes([inset_x_t, inset_y_t, 0.25, 0.25]) 
                 if os.path.exists(state_geojson_path):
                     gpd.read_file(state_geojson_path).plot(ax=ax_inset_t, color='white', edgecolor='gray', linewidth=0.5)
                 else:
