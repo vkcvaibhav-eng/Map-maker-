@@ -140,6 +140,15 @@ def process_uploaded_csv(uploaded_file) -> pd.DataFrame | None:
     df = pd.read_csv(uploaded_file)
     df.columns = df.columns.str.strip()
     df = df.loc[:, ~df.columns.duplicated()]
+    # Accept common case/name variants of the coordinate columns
+    rename = {}
+    for c in df.columns:
+        cl = c.lower()
+        if cl in ('latitude', 'lat') and 'Latitude' not in df.columns:
+            rename[c] = 'Latitude'
+        elif cl in ('longitude', 'lon', 'long', 'lng') and 'Longitude' not in df.columns:
+            rename[c] = 'Longitude'
+    df = df.rename(columns=rename)
     if 'Latitude' in df.columns and 'Longitude' in df.columns:
         df['Latitude']  = pd.to_numeric(df['Latitude'],  errors='coerce')
         df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
@@ -173,10 +182,28 @@ def annotate_with_outline(ax, text, xy, offset_pts, fontsize, txt_color, out_col
     )
 
 
-def add_scale_bar(ax, length_deg=0.5, label="~50 km"):
-    """Draw a simple scale bar in the lower-right corner of ax."""
+def add_scale_bar(ax):
+    """Draw a scale bar sized to the current map extent (lower-right corner)."""
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()
+    if xlim[1] <= xlim[0] or ylim[1] <= ylim[0]:
+        return
+    # Convert the longitude span to km at the map's mid-latitude,
+    # then pick a "nice" bar length (1/2/5 × 10^n km) ≈ 25% of the span.
+    lat_mid = (ylim[0] + ylim[1]) / 2
+    km_per_deg = 111.32 * np.cos(np.radians(lat_mid))
+    span_km = (xlim[1] - xlim[0]) * km_per_deg
+    target_km = span_km * 0.25
+    if target_km <= 0:
+        return
+    magnitude = 10 ** np.floor(np.log10(target_km))
+    nice_km = magnitude
+    for mult in (5, 2, 1):
+        if target_km >= mult * magnitude:
+            nice_km = mult * magnitude
+            break
+    length_deg = nice_km / km_per_deg
+    label = f"{nice_km:g} km"
     x0 = xlim[1] - (xlim[1] - xlim[0]) * 0.05 - length_deg
     y0 = ylim[0] + (ylim[1] - ylim[0]) * 0.04
     ax.plot([x0, x0 + length_deg], [y0, y0], color='black', linewidth=2.5, zorder=10)
@@ -186,9 +213,9 @@ def add_scale_bar(ax, length_deg=0.5, label="~50 km"):
             ha='center', va='bottom', fontsize=8, fontweight='bold', zorder=10)
 
 
-def add_compass(fig, cx, cy, size=0.1):
-    """Draw a compass rose at figure coordinates (cx, cy)."""
-    ax_c = fig.add_axes([cx, cy, size, size])
+def add_compass(fig, x, y, size=0.1):
+    """Draw a compass rose at figure coordinates (x, y)."""
+    ax_c = fig.add_axes([x, y, size, size])
     ax_c.set_axis_off()
     ax_c.set_aspect('equal')
     w = 0.15
@@ -294,6 +321,7 @@ def render_static_map(
                 fontsize=14, color='gray')
         ax.set_xticks([]); ax.set_yticks([]); ax.set_frame_on(False)
         st.pyplot(fig)
+        plt.close(fig)
         return
 
     highlighted = gdf[gdf[region_col].isin(selected_regions)]
@@ -315,6 +343,8 @@ def render_static_map(
     # Region labels
     txt_col, out_col = text_colors(basemap_choice)
     for _, row in highlighted.iterrows():
+        if row.geometry is None or row.geometry.is_empty:
+            continue
         centroid = row.geometry.centroid
         ax.annotate(
             text=row[region_col], xy=(centroid.x, centroid.y),
@@ -350,30 +380,35 @@ def render_static_map(
         short_col = find_col(loc['df'], SHORT_COL_CANDIDATES)
         y_offset  = 25 if loc['style'] == "Map Pin" else 15
 
-        if show_loc_labels:
-            for idx, r in loc['df'].iterrows():
-                full_val  = str(r[name_col])  if name_col  and pd.notna(r[name_col])  else f"Loc {idx+1}"
-                short_val = str(r[short_col]) if short_col and pd.notna(r[short_col]) else str(idx+1)
-                display   = short_val if loc['use_abbr'] else full_val
+        for idx, r in loc['df'].iterrows():
+            full_val  = str(r[name_col])  if name_col  and pd.notna(r[name_col])  else f"Loc {idx+1}"
+            short_val = str(r[short_col]) if short_col and pd.notna(r[short_col]) else str(idx+1)
+
+            if show_loc_labels:
+                display = short_val if loc['use_abbr'] else full_val
                 annotate_with_outline(ax, display, (r['Longitude'], r['Latitude']),
                                       y_offset, max(font_size-2, 8),
                                       txt_col_l, out_col_l)
 
-                if loc['use_abbr']:
-                    legend_handles.append(
-                        make_legend_handle(loc['style'], loc['color'], f"{short_val} – {full_val}")
-                    )
+            if loc['use_abbr']:
+                legend_handles.append(
+                    make_legend_handle(loc['style'], loc['color'], f"{short_val} – {full_val}")
+                )
 
         if not loc['use_abbr']:
             legend_handles.append(make_legend_handle(loc['style'], loc['color'], loc['label']))
 
     # Basemap tiles
-    if basemap_choice == "OpenStreetMap (Street View)":
-        cx.add_basemap(ax, crs=gdf.crs.to_string(),
-                       source=cx.providers.OpenStreetMap.Mapnik, zorder=0)
-    elif basemap_choice == "Esri World Imagery (Satellite)":
-        cx.add_basemap(ax, crs=gdf.crs.to_string(),
-                       source=cx.providers.Esri.WorldImagery, zorder=0)
+    try:
+        if basemap_choice == "OpenStreetMap (Street View)":
+            cx.add_basemap(ax, crs=gdf.crs.to_string(),
+                           source=cx.providers.OpenStreetMap.Mapnik, zorder=0)
+        elif basemap_choice == "Esri World Imagery (Satellite)":
+            cx.add_basemap(ax, crs=gdf.crs.to_string(),
+                           source=cx.providers.Esri.WorldImagery, zorder=0)
+    except Exception as e:
+        st.warning(f"Could not load basemap tiles (check internet connection). "
+                   f"Rendering without background. Details: {e}")
 
     # Coordinate grid
     if show_grid:
@@ -410,6 +445,7 @@ def render_static_map(
     fig.savefig(png_buf, format="png", dpi=300, bbox_inches='tight')
     pdf_buf = io.BytesIO()
     fig.savefig(pdf_buf, format="pdf", bbox_inches='tight')
+    plt.close(fig)
 
     dl_col1, dl_col2 = st.columns(2)
     dl_col1.download_button(
@@ -617,17 +653,21 @@ with tab1:
 
                 if color_col != "None (All Red)":
                     unique_vals = df_gps[color_col].dropna().unique()
+                    selected_vals = []
                     with col1:
                         st.markdown("**Toggle data groups:**")
-                    selected_vals = []
-                    for i, val in enumerate(unique_vals):
-                        color_map[val] = FOLIUM_COLORS[i % len(FOLIUM_COLORS)]
-                        if st.checkbox(f"Show {val}", value=True, key=f"chk_{val}"):
-                            selected_vals.append(val)
+                        for i, val in enumerate(unique_vals):
+                            color_map[val] = FOLIUM_COLORS[i % len(FOLIUM_COLORS)]
+                            if st.checkbox(f"Show {val}", value=True, key=f"chk_{color_col}_{val}"):
+                                selected_vals.append(val)
                     filtered_df = df_gps[df_gps[color_col].isin(selected_vals)]
 
                 for _, row in filtered_df.iterrows():
-                    loc_name = row.get('Name', row.get('Location', 'Unknown'))
+                    loc_name = row.get('Name')
+                    if pd.isna(loc_name):
+                        loc_name = row.get('Location')
+                    if pd.isna(loc_name):
+                        loc_name = 'Unknown'
                     tooltip   = f"<b>{loc_name}</b>"
                     if color_col != "None (All Red)" and pd.notna(row.get(color_col)):
                         tooltip += f"<br>{color_col}: {row[color_col]}"
@@ -647,7 +687,7 @@ with tab1:
         st_folium(m, width=800, height=500)
         st.download_button(
             "⬇️ Download Map (HTML)",
-            data=m._repr_html_(),
+            data=m.get_root().render(),
             file_name="interactive_survey_map.html",
             mime="text/html",
         )
@@ -663,6 +703,10 @@ with tab2:
     else:
         gdf_dist = load_geodata(DATA_PATHS["Districts"])
         dist_col = find_region_col(gdf_dist, DISTRICT_COL_CANDIDATES)
+        if dist_col is None:
+            st.error(f"No district-name column found in `{DATA_PATHS['Districts']}`. "
+                     f"Expected one of: {', '.join(DISTRICT_COL_CANDIDATES)}")
+            st.stop()
         gdf_dist[dist_col] = gdf_dist[dist_col].astype(str).str.strip()
         all_districts = sorted([d for d in gdf_dist[dist_col].dropna().unique() if d != "nan"])
 
@@ -680,7 +724,7 @@ with tab2:
             )
 
             style_d    = map_styling_ui("dist")
-            placement_d = element_placement_ui("dist", list(LEGEND_MAPPING.keys()))
+            placement_d = element_placement_ui("dist", list(LEGEND_MAPPING.keys()) + ["None"])
 
             st.markdown("---")
             st.subheader("4. Survey Points")
@@ -728,6 +772,10 @@ with tab3:
     else:
         gdf_tal  = load_geodata(DATA_PATHS["Talukas"])
         tal_col  = find_region_col(gdf_tal, TALUKA_COL_CANDIDATES)
+        if tal_col is None:
+            st.error(f"No taluka-name column found in `{DATA_PATHS['Talukas']}`. "
+                     f"Expected one of: {', '.join(TALUKA_COL_CANDIDATES)}")
+            st.stop()
         gdf_tal[tal_col] = gdf_tal[tal_col].astype(str).str.strip()
         all_talukas = sorted([t for t in gdf_tal[tal_col].dropna().unique() if t != "nan"])
 
@@ -740,7 +788,7 @@ with tab3:
             selected_talukas = st.multiselect("Highlight talukas:", all_talukas, key="taluka_select")
 
             style_t     = map_styling_ui("taluka")
-            placement_t = element_placement_ui("taluka", list(LEGEND_MAPPING.keys()))
+            placement_t = element_placement_ui("taluka", list(LEGEND_MAPPING.keys()) + ["None"])
 
             st.markdown("---")
             st.subheader("4. Survey Points")
